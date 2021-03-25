@@ -1,0 +1,1 @@
+This NBT implementation is modified version of https://github.com/janispritzkau/nbt-ts
