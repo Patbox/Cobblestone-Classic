@@ -178,28 +178,28 @@ const logger: ILogger & { writeToLog: (t: string) => void; file?: Deno.File; ope
 		logger.writeToLog(out);
 	},
 	error: (text: string) => {
-		const out = `&8[&f${hourNow()} &4Error &8] &c${text}`;
+		const out = `&8[&f${hourNow()} &4Error&8] &c${text}`;
 
 		console.log(colorToTerminal(out));
 		logger.writeToLog(out);
 	},
 	warn: (text: string) => {
-		const out = `&8[&f${hourNow()} &6Warn &8] &6${text}`;
+		const out = `&8[&f${hourNow()} &6Warn&8] &6${text}`;
 
 		console.log(colorToTerminal(out));
 		logger.writeToLog(out);
 	},
 	chat: (text: string) => {
-		const out = `&8[&f${hourNow()}&e Chat &8] &e${text}`;
+		const out = `&8[&f${hourNow()}&e Chat&8] &e${text}`;
 
 		console.log(colorToTerminal(out));
 		logger.writeToLog(out);
 	},
 
-	player: (text: string) => {
-		const out = `&8[&f${hourNow()} &aPlayer &8] &1${text}`;
+	conn: (text: string) => {
+		const out = `&8[&f${hourNow()} &aConn&8] &b${text}`;
 
-		console.log(out);
+		console.log(colorToTerminal(out));
 		logger.writeToLog(out);
 	},
 

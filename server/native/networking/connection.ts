@@ -5,7 +5,8 @@ export class TpcConnectionHandler extends ConnectionHandler {
 	_buffer: Uint8Array;
 
 	constructor(conn: Deno.Conn) {
-		super();
+		super((<Deno.NetAddr>conn.remoteAddr).hostname, (<Deno.NetAddr>conn.remoteAddr).port);
+
 
 		this._conn = conn;
 		this._buffer = new Uint8Array(4096);

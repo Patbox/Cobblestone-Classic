@@ -23,12 +23,17 @@ export interface PlayerMove {
 	yaw: number;
 }
 
+export interface PlayerColides {
+	player: Player;
+	with: Player[];
+}
+
 export interface PlayerTeleport {
 	player: Player;
 	position: [number, number, number];
-	world: World,
-	yaw?: number,
-	pitch?: number,
+	world: World;
+	yaw?: number;
+	pitch?: number;
 }
 
 export interface PlayerMessage {

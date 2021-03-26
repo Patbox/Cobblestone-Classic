@@ -1,16 +1,20 @@
+import { Holder } from "./types.ts";
+
 export class Block {
 	unbreakable: boolean;
 	numId: number;
 	type: BlockTypes;
+	solid: boolean;
 
 	constructor(id: number, type: BlockTypes = 'full', unbreakable: boolean = false) {
 		this.numId = id;
 		this.type = type;
 		this.unbreakable = unbreakable;
+		this.solid = type == 'full' || type == 'slab';
 	}
 }
 
-export type BlockTypes = 'full' | 'fluid' | 'plant' | 'gravity' | 'slab' | 'air';
+export type BlockTypes = 'full' | 'fluid' | 'plant' | 'slab' | 'air';
 
 export const blocks = {
 	air: new Block(0, 'air'),
@@ -25,8 +29,8 @@ export const blocks = {
 	water: new Block(9, 'fluid', false),
 	flowingLava: new Block(10, 'fluid', false),
 	lava: new Block(11, 'fluid', false),
-	sand: new Block(12, 'gravity'),
-	gravel: new Block(13, 'gravity'),
+	sand: new Block(12),
+	gravel: new Block(13),
 	goldOre: new Block(14),
 	ironOre: new Block(15),
 	coalOre: new Block(16),
@@ -117,3 +121,10 @@ export const blockIds = {
 	moss: 48,
 	obsidian: 49,
 };
+
+
+export const blocksIdsToName: Record<number, string> = {};
+
+for (const x in blockIds) {
+	blocksIdsToName[(<Holder<number>>blockIds)[x]] = x;
+}

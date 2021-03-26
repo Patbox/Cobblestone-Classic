@@ -1,10 +1,11 @@
 import { Player } from './player.ts';
 import { Server } from './server.ts';
-import { Nullable, Services, XYZ } from './types.ts';
+import { Holder, Nullable, Services, XYZ } from './types.ts';
 
 import { Byte, decode as decodeNBT, encode as encodeNBT, Short, Tag, TagObject } from '../libs/nbt/index.ts';
 
 import { uuid } from './deps.ts';
+import { blocks, Block, blocksIdsToName } from "./blocks.ts";
 
 export class World {
 	blockData: Uint8Array;
@@ -77,7 +78,7 @@ export class World {
 		this.blockData[4 + x + this.size[0] * (z + this.size[2] * y)] = block;
 	}
 
-	getBlock(x: number, y: number, z: number) {
+	getBlock(x: number, y: number, z: number): number {
 		return this.isInBounds(x, y, z) ? this.blockData[4 + x + this.size[0] * (z + this.size[2] * y)] : 0;
 	}
 
@@ -87,6 +88,17 @@ export class World {
 
 	save() {
 		this._server.saveWorld(this);
+	}
+
+	getHighestBlock(x: number, z: number, nonSolid = false): number {
+		for (let y = this.size[1] - 1; y > 0; y--) {
+			const block = this.getBlock(x, y, z);
+			if ((nonSolid && block != 0) || (<Holder<Block>>blocks)[blocksIdsToName[block]].solid) {
+				return y;
+			}
+		}
+
+		return 0;
 	}
 
 	_addPlayer(player: Player) {

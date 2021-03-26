@@ -3,17 +3,17 @@ import { Player, PlayerData } from './player.ts';
 import { World, WorldData, WorldGenerator } from './world.ts';
 
 import * as event from './events.ts';
-import { AuthData, Holder, Nullable, XYZ } from './types.ts';
+import { AuthData, Holder, ICommand, IGroup, IPlugin, Nullable, XYZ } from './types.ts';
 import { ConnectionHandler } from './networking/connection.ts';
 import { setupGenerators } from './generators.ts';
 import { semver } from './deps.ts';
-import { blocks, blockIds } from './blocks.ts';
+import { blocks, blockIds, blocksIdsToName } from './blocks.ts';
 
 export class Server {
 	readonly softwareName = 'Cobblestone';
-	readonly softwareVersion = '0.0.1';
-	readonly _apiVersion = '0.0.1';
-	readonly _minimalApiVersion = '0.0.1';
+	readonly softwareVersion = '0.0.2';
+	readonly _apiVersion = '0.0.2';
+	readonly _minimalApiVersion = '0.0.2';
 
 	readonly files: IFileHelper;
 	readonly logger: ILogger;
@@ -22,6 +22,7 @@ export class Server {
 		PlayerDisconnect: new Emitter<event.PlayerDisconnect>(),
 		PlayerChangeWorld: new Emitter<event.PlayerChangeWorld>(),
 		PlayerMove: new Emitter<event.PlayerMove>(),
+		PlayerColides: new Emitter<event.PlayerColides>(),
 		PlayerMessage: new Emitter<event.PlayerMessage>(),
 		PlayerTeleport: new Emitter<event.PlayerTeleport>(),
 		PlayerBlockBreak: new Emitter<event.PlayerChangeBlock>(),
@@ -38,6 +39,7 @@ export class Server {
 	readonly _plugins: Holder<IPlugin> = {};
 	readonly blocks = blocks;
 	readonly blockIds = blockIds;
+	readonly blockIdsToNames = blocksIdsToName;
 
 	readonly groups: Holder<IGroup> = {};
 
@@ -54,15 +56,17 @@ export class Server {
 	isShuttingDown = false;
 
 	constructor(files: IFileHelper, logger: ILogger) {
+		files.createBaseDirectories();
+
 		logger.log(`&aStarting ${this.softwareName} ${this.softwareVersion} server...`);
 
 		this.files = files;
 		this.logger = logger;
 
-		files.createBaseDirectories();
-
 		if (files.existConfig('config')) {
-			this.config = { ...defaultConfig, ...(<IConfig>files.getConfig('config')) };
+			const tmp = <IConfig>files.getConfig('config');
+			this.config = { ...defaultConfig, ...tmp };
+			(<Holder<string>>this.config.messages) = { ...defaultConfig.messages, ...(tmp.messages ?? {}) };
 		} else {
 			this.config = { ...defaultConfig };
 		}
@@ -78,7 +82,7 @@ export class Server {
 
 		setupGenerators(this);
 
-		this.loadWorld(this.config.defaultWorldName) ?? this.createWorld(this.config.defaultWorldName, [256, 64, 256], this._generators['grasslands']);
+		this.loadWorld(this.config.defaultWorldName) ?? this.createWorld(this.config.defaultWorldName, [256, 128, 256], this._generators['grasslands']);
 
 		Object.values(this.worlds).forEach((world) => {
 			this.files.saveWorld(`backup/${world.fileName}-${this.formatDate(new Date())}`, world);
@@ -129,6 +133,8 @@ export class Server {
 
 	connectPlayer(conn: ConnectionHandler, client?: string, overrides?: AuthData) {
 		try {
+			conn._server = this;
+			this.logger.conn(`Connection from ${conn.ip}:${conn.port}...`)
 			conn._clientPackets.PlayerIdentification.once(async ({ value: playerInfo }) => {
 				conn.sendServerInfo(this);
 
@@ -239,6 +245,7 @@ export class Server {
 		);
 
 		generator.generate(world);
+		world.spawnPoint[1] = world.getHighestBlock(world.spawnPoint[0], world.spawnPoint[2], true);
 
 		this.worlds[name] = world;
 
@@ -250,6 +257,11 @@ export class Server {
 	async addPlugin(plugin: IPlugin, altid?: string): Promise<Nullable<IPlugin>> {
 		const textId = altid != undefined ? `${plugin.id} | ${altid}` : plugin.id;
 
+		if (!plugin.id || !plugin.init || !plugin.version || !plugin.api) {
+			altid ? this.logger.warn(`Plugin ${altid} isn't a valid plguin. Skipping...`) : null;
+			return null;
+		}
+
 		try {
 			const api = semver.valid(plugin.api);
 			if (api != null) {
@@ -259,6 +271,7 @@ export class Server {
 
 						this._plugins[plugin.id] = {
 							...plugin,
+							name: plugin.name ?? plugin.id,
 							init: (x) => null,
 						};
 
@@ -349,7 +362,7 @@ export interface ILogger {
 	error(text: string): void;
 	warn(text: string): void;
 	chat(text: string): void;
-	player(text: string): void;
+	conn(text: string): void;
 
 	storedToFile: boolean;
 }
@@ -398,6 +411,7 @@ export interface IConfig {
 		leave: string;
 		chat: string;
 		serverStopped: string;
+		noCommand: string;
 		cheatDistance: string;
 		cheatTile: string;
 		cheatClick: string;
@@ -431,6 +445,7 @@ const defaultConfig: IConfig = {
 		join: '&ePlayer <$PLAYER> joined the game',
 		leave: '&ePlayer <$PLAYER> left the game',
 		chat: '&f<$PLAYER> $MESSAGE',
+		noCommand: "&cThis command doesn't exist or you don't have access to it",
 		serverStopped: 'Server stopped!',
 		cheatDistance: 'Cheat detected: Distance',
 		cheatTile: 'Cheat detected: Tile type',
@@ -438,36 +453,3 @@ const defaultConfig: IConfig = {
 		cheatSpam: "You've spammed too much",
 	},
 };
-
-export interface ICommand {
-	name: string;
-	description: string;
-	permission?: string;
-	execute: (ctx: ICommandContext) => void;
-	help?: string[];
-}
-
-export interface ICommandContext {
-	command: string;
-	player: Nullable<Player>;
-	server: Server;
-	send: (text: string) => void;
-}
-
-export interface IGroup {
-	name: string;
-	visibleName?: string;
-	prefix?: string;
-	sufix?: string;
-
-	permissions: { [i: string]: Nullable<boolean> };
-}
-
-export interface IPlugin {
-	id: string;
-	name: string;
-	version: string;
-	api: string;
-	init: (server: Server) => void;
-	[i: string]: unknown;
-}

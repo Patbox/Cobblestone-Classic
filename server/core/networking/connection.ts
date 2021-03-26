@@ -9,17 +9,23 @@ import { Server } from '../server.ts';
 export const serverPackets = new ServerPacketHandler();
 
 export class ConnectionHandler {
-	_clientPackets: ClientPacketHandler;
-	_serverPackets = serverPackets;
+	readonly _clientPackets: ClientPacketHandler;
+	readonly _serverPackets = serverPackets;
 	_player: Nullable<Player> = null;
+	_server: Nullable<Server> = null;
 
 	isConnected = false;
 	sendingWorld = false;
+	lastSpawn: XYZ = [0, 0, 0];
+	readonly ip: string;
+	readonly port: number;
 
 	blockUpdates: Uint8Array[] = [];
 
-	constructor() {
+	constructor(ip: string, port: number) {
 		this._clientPackets = new ClientPacketHandler();
+		this.ip = ip;
+		this.port = port;
 	}
 
 	setPlayer(player: Player) {
@@ -119,6 +125,7 @@ export class ConnectionHandler {
 		}
 
 		if (this.isConnected) {
+			this._server?.logger.conn(`User ${this.ip}:${this.port} ${this._player ? '(' + this._player.username + ')' : ''} disconnected! Reason ${message}`)
 			this.isConnected = false;
 			this._send(serverPackets.encodeDisconnect({ reason: message }));
 		}
@@ -126,6 +133,8 @@ export class ConnectionHandler {
 
 	sendTeleport(player: Player, pos: XYZ, yaw: number, pitch: number) {
 		const pid = this._player == player ? -1 : player.numId;
+		pid == -1 ? (this.lastSpawn = [...player.position]) : null;
+
 		this._send(serverPackets.encodeTeleport({ player: pid, x: toCords(pos[0]), y: toCords(pos[1]) + 51, z: toCords(pos[2]), yaw, pitch }));
 	}
 
@@ -146,6 +155,7 @@ export class ConnectionHandler {
 
 	sendSpawnPlayer(player: Player) {
 		const pid = this._player == player ? -1 : player.numId;
+		pid == -1 ? (this.lastSpawn = [...player.position]) : null;
 
 		this._send(
 			serverPackets.encodeSpawnPlayer({

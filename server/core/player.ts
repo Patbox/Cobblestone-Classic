@@ -2,11 +2,13 @@ import { ConnectionHandler } from './networking/connection.ts';
 import { Server } from './server.ts';
 import { Holder, Nullable, Services } from './types.ts';
 import { World } from './world.ts';
+import * as vec from '../libs/vec.ts';
 
 export class Player {
 	username: string;
 	readonly uuid: string;
 	readonly numId: number;
+	readonly ip: string;
 	client: string;
 	service: Services;
 	position: [number, number, number];
@@ -22,6 +24,8 @@ export class Player {
 	readonly _connectionHandler: ConnectionHandler;
 
 	constructor(uuid: string, username: string, client: string, service: Services, connection: ConnectionHandler, server: Server) {
+		this.ip = connection.ip;
+		
 		this.username = username;
 		this.service = service;
 
@@ -150,10 +154,15 @@ export class Player {
 			world: this.world.fileName,
 			pitch: this.pitch,
 			yaw: this.yaw,
+			ip: this.ip
 		};
 	}
 
 	_action_move(x: number, y: number, z: number, yaw: number, pitch: number) {
+		if (vec.equals([x, y, z], this.position)) {
+			return;
+		}
+
 		const result = this._server.event.PlayerMove._emit({ player: this, position: [x, y, z], pitch, yaw });
 
 		if (result) {
@@ -161,6 +170,20 @@ export class Player {
 			this.position = [x, y, z];
 			this.pitch = pitch;
 			this.yaw = yaw;
+
+			const colides: Player[] = [];
+			this.world.players.forEach((p) => {
+				if (p == this) {
+					return;
+				}
+				if (vec.dist(this.position, p.position) < 3 && this._checkColision(p)) {
+					colides.push(p);
+				}
+			});
+
+			if (colides.length > 0) {
+				this._server.event.PlayerColides._emit({ player: this, with: colides });
+			}
 		} else {
 			this._connectionHandler.sendTeleport(this, this.position, this.yaw, this.pitch);
 		}
@@ -190,7 +213,7 @@ export class Player {
 		if (message.startsWith('/')) {
 			const result = this.executeCommand(message.slice(1));
 			if (!result) {
-				this.sendMessage("&cThis command doesn't exist or you don't have access to it");
+				this.sendMessage(this._server.getMessage('nocommand', {}));
 			}
 		} else {
 			const result = this._server.event.PlayerMessage._emit({ player: this, message: message });
@@ -199,6 +222,31 @@ export class Player {
 				this._server.sendChatMessage(this._server.getMessage('chat', { player: this.username, message: message }), this);
 			}
 		}
+	}
+
+	checkColision(player: Player): boolean {
+		if (this.world != player.world || vec.dist(this.position, player.position) > 3) {
+			return false;
+		}
+
+		return this._checkColision(player);
+	}
+
+	_checkColision(player: Player): boolean {
+		const selfMax = vec.add(this.position, [0.4, 1.8, 0.4]);
+		const selfMin = vec.add(this.position, [-0.4, 0, -0.4]);
+
+		const playerMax = vec.add(player.position, [0.4, 1.8, 0.4]);
+		const playerMin = vec.add(player.position, [-0.4, 0, -0.4]);
+
+		if (playerMin[0] > selfMax[0]) return false;
+		if (playerMin[1] > selfMax[1]) return false;
+		if (playerMin[2] > selfMax[2]) return false;
+		if (playerMax[0] < selfMin[0]) return false;
+		if (playerMax[1] < selfMin[1]) return false;
+		if (playerMax[2] < selfMin[2]) return false;
+
+		return true;
 	}
 }
 
@@ -211,4 +259,5 @@ export interface PlayerData {
 	world: string;
 	pitch: number;
 	yaw: number;
+	ip: string;
 }

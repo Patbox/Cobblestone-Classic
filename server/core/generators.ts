@@ -45,7 +45,7 @@ export function setupGenerators(server: Server) {
 				for (let x = 0; x < xSize; x++) {
 					for (let z = 0; z < zSize; z++) {
 						const h = heightNoise(x / 120, z / 120) + 0.4 + (heightNoise2(x / 10, z / 10) + 1) / 4;
-						if ((caveNoise(x / 70, y / 70, z / 70) * (1.2 - h) + caveNoise2(x / 40, y / 40, z / 40) * h) * 18 + ySize / 2 >= y) {
+						if ((caveNoise(x / 70, y / 70, z / 70) * (1.2 - h) + caveNoise2(x / 40, y / 40, z / 40) * h) * 16 + ySize / 2 + 3 >= y) {
 							tempWorld[index(x, y, z)] = 1;
 						}
 					}
@@ -63,14 +63,14 @@ export function setupGenerators(server: Server) {
 
 						let block = 0;
 
-						if (b0 + b1 + b2 == 1) {
-							block = y > zSize / 8 - 1 ? blockIds.grass : blockIds.sand;
+						if (b0 == 1 && b1 == 0 && b2 == 0) {
+							block = y > (ySize - 1) / 2 ? blockIds.grass : blockIds.sand;
 						} else if (b0 + b1 + b2 + b3 + b4 == 5) {
 							block = blockIds.stone;
-						} else if (b0 + b1 + b2 + b3 + b4 > 1) {
-							block = y <= zSize / 8 - 1 && y + 2 <= zSize / 8 - 1 ? blockIds.sand : blockIds.dirt;
+						} else if (b0 == 1 && b1 == 1 && b4 == 0) {
+							block = y <= (ySize - 1) / 2 && y + 2 <= zSize / 8 - 1 ? blockIds.sand : blockIds.dirt;
 						} else {
-							block = y > zSize / 8 - 1 ? blockIds.air : blockIds.water;
+							block = y > (ySize - 1) / 2 ? blockIds.air : blockIds.water;
 						}
 
 						world.rawSetBlock(x, y, z, block);
