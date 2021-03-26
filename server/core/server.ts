@@ -3,17 +3,21 @@ import { Player, PlayerData } from './player.ts';
 import { World, WorldData, WorldGenerator } from './world.ts';
 
 import * as event from './events.ts';
-import { AuthData, Nullable, Services, XYZ } from './types.ts';
+import { AuthData, Holder, Nullable, XYZ } from './types.ts';
 import { ConnectionHandler } from './networking/connection.ts';
 import { setupGenerators } from './generators.ts';
+import { semver } from './deps.ts';
+import { blocks, blockIds } from './blocks.ts';
 
 export class Server {
-	softwareName = 'Cobblestone';
-	softwareVersion = '0.0.0';
+	readonly softwareName = 'Cobblestone';
+	readonly softwareVersion = '0.0.1';
+	readonly _apiVersion = '0.0.1';
+	readonly _minimalApiVersion = '0.0.1';
 
-	files: IFileHelper;
-	logger: ILogger;
-	event = {
+	readonly files: IFileHelper;
+	readonly logger: ILogger;
+	readonly event = {
 		PlayerConnect: new Emitter<event.PlayerConnect>(),
 		PlayerDisconnect: new Emitter<event.PlayerDisconnect>(),
 		PlayerChangeWorld: new Emitter<event.PlayerChangeWorld>(),
@@ -23,18 +27,31 @@ export class Server {
 		PlayerBlockBreak: new Emitter<event.PlayerChangeBlock>(),
 		PlayerBlockPlace: new Emitter<event.PlayerChangeBlock>(),
 		PlayerCommand: new Emitter<event.PlayerCommand>(),
+		ServerShutdown: new Emitter<Server>(),
+		ServerLoadingFinished: new Emitter<Server>(),
 	};
 
-	worlds: { [i: string]: World } = {};
-	players: { [i: string]: Player } = {};
-	generators: { [i: string]: WorldGenerator } = {};
-	commands: { [i: string]: ICommand } = {};
+	readonly worlds: Holder<World> = {};
+	readonly players: Holder<Player> = {};
+	readonly _generators: Holder<WorldGenerator> = {};
+	readonly _commands: Holder<ICommand> = {};
+	readonly _plugins: Holder<IPlugin> = {};
+	readonly blocks = blocks;
+	readonly blockIds = blockIds;
+
+	readonly groups: Holder<IGroup> = {};
+
+	readonly classicTextRegex = /[^ -~]/gi;
 	config: IConfig;
 
 	_takenPlayerIds: number[] = [];
 
 	_autoSaveInterval = -1;
 	_autoBackupInterval = -1;
+
+	_loaded = false;
+
+	isShuttingDown = false;
 
 	constructor(files: IFileHelper, logger: ILogger) {
 		logger.log(`&aStarting ${this.softwareName} ${this.softwareVersion} server...`);
@@ -45,19 +62,26 @@ export class Server {
 		files.createBaseDirectories();
 
 		if (files.existConfig('config')) {
-			this.config = { ...defaultConfig, ...<IConfig>files.getConfig('config') };
+			this.config = { ...defaultConfig, ...(<IConfig>files.getConfig('config')) };
 		} else {
 			this.config = { ...defaultConfig };
 		}
 
+		if (files.existConfig('groups')) {
+			this.groups = { ...(<Holder<IGroup>>files.getConfig('groups')) };
+		} else {
+			this.groups['default'] = { name: 'default', permissions: {} };
+		}
+
 		files.saveConfig('config', this.config);
+		files.saveConfig('groups', this.groups);
 
 		setupGenerators(this);
 
-		this.loadWorld(this.config.defaultWorldName) ?? this.createWorld(this.config.defaultWorldName, [256, 64, 256], this.generators['grasslands']);
+		this.loadWorld(this.config.defaultWorldName) ?? this.createWorld(this.config.defaultWorldName, [256, 64, 256], this._generators['grasslands']);
 
 		Object.values(this.worlds).forEach((world) => {
-			this.files.saveWorld(`backup/${world.fileName}-${new Date()}`, world);
+			this.files.saveWorld(`backup/${world.fileName}-${this.formatDate(new Date())}`, world);
 		});
 
 		if (this.config.autoSaveInterval > 0) {
@@ -70,20 +94,29 @@ export class Server {
 		if (this.config.autoSaveInterval > 0) {
 			this._autoBackupInterval = setInterval(() => {
 				Object.values(this.worlds).forEach((world) => {
-					this.files.saveWorld(`backup/${world.fileName}-${new Date()}`, world);
+					this.files.saveWorld(`backup/${world.fileName}-${this.formatDate(new Date())}`, world);
 				});
 			}, 1000 * 60 * this.config.backupInterval);
 		}
 
-		this.startListening();
+		this.startLoadingPlugins(() => {
+			this.startListening();
 
-		logger.log('Server started!');
+			logger.log('Server started!');
+
+			this._loaded = true;
+			this.event.ServerLoadingFinished._emit(this);
+		});
 	}
 
 	startListening() {}
 
 	stopServer() {
+		this.isShuttingDown = true;
 		this.logger.log('&6Closing server...');
+		this.files.saveConfig('config', this.config);
+		this.files.saveConfig('groups', this.groups);
+		this.event.ServerShutdown._emit(this);
 
 		Object.values(this.players).forEach((player) => {
 			player.disconnect('Server closed');
@@ -109,7 +142,7 @@ export class Server {
 
 				if (result.allow) {
 					const player = new Player(
-						result.auth.username,
+						result.auth.uuid ?? 'offline-' + result.auth.username.toLowerCase(),
 						result.auth.username,
 						client ?? 'Classic',
 						result.auth.service,
@@ -120,12 +153,13 @@ export class Server {
 					this.players[player.uuid] = player;
 
 					player.changeWorld(player.world);
-					this.sendChatMessage(player, `&a${player.username} joined the game.`);
+					this.sendChatMessage(this.getMessage('join', { player: player.username }), player);
 				} else {
 					conn.disconnect('You need to log in!');
 				}
 			});
 		} catch (e) {
+			this.logger.error('Disconnected player - ' + e);
 			conn.disconnect(e);
 		}
 	}
@@ -137,16 +171,17 @@ export class Server {
 	executeCommand(command: string): boolean {
 		const x = command.split(' ');
 
-		if (this.commands[x[0]] != undefined) {
-			this.commands[x[0]].execute({ server: this, player: null, command, send: this.logger.log });
+		if (this._commands[x[0]] != undefined) {
+			this._commands[x[0]].execute({ server: this, player: null, command, send: (t) => this.logger.log });
 			return true;
 		}
-
 		return false;
 	}
 
-	sendChatMessage(player: Player, message: string) {
-		Object.values(this.players).forEach((p) => p.sendMessage(player, message));
+	sendChatMessage(message: string, player?: Player) {
+		Object.values(this.players).forEach((p) => p.sendMessage(message, player));
+
+		this.logger.chat(message);
 	}
 
 	saveWorld(world: World): boolean {
@@ -211,6 +246,102 @@ export class Server {
 
 		return world;
 	}
+
+	async addPlugin(plugin: IPlugin, altid?: string): Promise<Nullable<IPlugin>> {
+		const textId = altid != undefined ? `${plugin.id} | ${altid}` : plugin.id;
+
+		try {
+			const api = semver.valid(plugin.api);
+			if (api != null) {
+				if (semver.gte(api, this._minimalApiVersion)) {
+					if (semver.lte(api, this.softwareVersion)) {
+						await plugin.init(this);
+
+						this._plugins[plugin.id] = {
+							...plugin,
+							init: (x) => null,
+						};
+
+						return this._plugins[plugin.id];
+					} else {
+						this.logger.warn(`Plugin ${plugin.name} (${textId}) requires newer api version (${plugin.api}). Skipping...`);
+						return null;
+					}
+				} else {
+					this.logger.warn(`Plugin ${plugin.name} (${textId}) requires outdated api version (${plugin.api}). Skipping...`);
+					return null;
+				}
+			}
+
+			this.logger.warn(`Plugin ${plugin.name} (${textId}) declares usage of invalid api (${plugin.api}). Skipping...`);
+			return null;
+		} catch (e) {
+			this.logger.error(`Loading plugin ${plugin.name} (${textId}) caused an exception!`);
+			this.logger.error(e);
+			return null;
+		}
+	}
+
+	startLoadingPlugins(cb: () => void) {
+		cb();
+	}
+
+	getPlugin(plugin: string): Nullable<IPlugin> {
+		return this._plugins[plugin] ?? null;
+	}
+
+	addCommand(command: ICommand): boolean {
+		if (command.name.includes(' ')) {
+			return false;
+		}
+
+		this._commands[command.name] = command;
+		return true;
+	}
+
+	getCommand(command: string): Nullable<ICommand> {
+		return this._commands[command] ?? null;
+	}
+
+	addGenerator(gen: WorldGenerator): boolean {
+		this._generators[gen.name] = gen;
+		return true;
+	}
+
+	getGenerator(gen: string): Nullable<WorldGenerator> {
+		return this._generators[gen] ?? null;
+	}
+
+	getMessage(id: string, values: Holder<string>): string {
+		let message = this.config.messages[id];
+
+		if (message == undefined) {
+			message = id;
+		}
+
+		for (const x in values) {
+			message = message.replaceAll('$' + x.toUpperCase(), values[x]);
+		}
+
+		return message;
+	}
+
+	static formatDate(date: number | Date, showTime = true): string {
+		if (!(date instanceof Date)) {
+			date = new Date(date);
+		}
+
+		return (
+			`${date.getFullYear()}-${addZero(date.getMonth())}-${addZero(date.getDay())}` +
+			(showTime ? `-${addZero(date.getHours())}-${addZero(date.getMinutes())}-${addZero(date.getSeconds())}` : '')
+		);
+	}
+
+	formatDate = Server.formatDate;
+}
+
+function addZero(n: number): string {
+	return n > 9 ? n.toString() : '0' + n;
 }
 
 export interface ILogger {
@@ -261,6 +392,18 @@ export interface IConfig {
 	VoxelSrvOnlineMode: boolean;
 	publicOnVoxelSrv: boolean;
 	allowOffline: boolean;
+
+	messages: {
+		join: string;
+		leave: string;
+		chat: string;
+		serverStopped: string;
+		cheatDistance: string;
+		cheatTile: string;
+		cheatClick: string;
+		cheatSpam: string;
+		[i: string]: string;
+	};
 }
 
 const defaultConfig: IConfig = {
@@ -283,12 +426,25 @@ const defaultConfig: IConfig = {
 	VoxelSrvOnlineMode: false,
 	publicOnVoxelSrv: false,
 	allowOffline: true,
+
+	messages: {
+		join: '&ePlayer <$PLAYER> joined the game',
+		leave: '&ePlayer <$PLAYER> left the game',
+		chat: '&f<$PLAYER> $MESSAGE',
+		serverStopped: 'Server stopped!',
+		cheatDistance: 'Cheat detected: Distance',
+		cheatTile: 'Cheat detected: Tile type',
+		cheatClick: 'Cheat detected: Too much clicking!',
+		cheatSpam: "You've spammed too much",
+	},
 };
 
 export interface ICommand {
 	name: string;
 	description: string;
+	permission?: string;
 	execute: (ctx: ICommandContext) => void;
+	help?: string[];
 }
 
 export interface ICommandContext {
@@ -296,4 +452,22 @@ export interface ICommandContext {
 	player: Nullable<Player>;
 	server: Server;
 	send: (text: string) => void;
+}
+
+export interface IGroup {
+	name: string;
+	visibleName?: string;
+	prefix?: string;
+	sufix?: string;
+
+	permissions: { [i: string]: Nullable<boolean> };
+}
+
+export interface IPlugin {
+	id: string;
+	name: string;
+	version: string;
+	api: string;
+	init: (server: Server) => void;
+	[i: string]: unknown;
 }

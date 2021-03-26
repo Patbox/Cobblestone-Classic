@@ -19,7 +19,7 @@ export class TpcConnectionHandler extends ConnectionHandler {
 
 	protected async loop(conn: Deno.Conn): Promise<void> {
 		for (;;) {
-			const chunks = await this.read(conn);
+			const chunks = await this.read(conn);			
 			if (chunks === null) break;
 
 			this._clientPackets._decode(chunks);
@@ -39,7 +39,6 @@ export class TpcConnectionHandler extends ConnectionHandler {
 		}
 
 		const bytes = this._buffer.subarray(0, read);
-
 		return bytes;
 	}
 

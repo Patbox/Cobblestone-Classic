@@ -1,6 +1,6 @@
 import { World } from '../world.ts';
 import { ClientPacketHandler } from './clientPackets.ts';
-import { ServerPacketHandler, SetBlock } from './serverPackets.ts';
+import { ServerPacketHandler } from './serverPackets.ts';
 import { gzip } from '../deps.ts';
 import { Nullable, XYZ } from '../types.ts';
 import { Player } from '../player.ts';
@@ -10,6 +10,7 @@ export const serverPackets = new ServerPacketHandler();
 
 export class ConnectionHandler {
 	_clientPackets: ClientPacketHandler;
+	_serverPackets = serverPackets;
 	_player: Nullable<Player> = null;
 
 	isConnected = false;

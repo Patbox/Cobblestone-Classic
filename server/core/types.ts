@@ -11,3 +11,5 @@ export interface AuthData {
 	secret: Nullable<string>;
 	authenticated: boolean
 }
+
+export type Holder<T> = {[i: string]: T}

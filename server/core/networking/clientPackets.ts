@@ -1,4 +1,5 @@
 import { Emitter } from '../../libs/emitter.ts';
+import { Holder } from "../types.ts";
 import { PacketReader, PacketWriter } from './helper.ts';
 
 export class ClientPacketHandler {
@@ -51,6 +52,12 @@ export class ClientPacketHandler {
 			default:
 				this.Unknown._emit(buffer);
 		}
+
+		const lenght = packetIdsToLenght[buffer[0]] ?? 4096;
+		if (buffer.length > lenght) {
+			this._decode(buffer.slice(lenght, buffer.length));
+		}
+
 	}
 
 	encodePlayerIdentification(i: PlayerIdentification): Uint8Array {
@@ -110,6 +117,12 @@ export const packetLenght = {
 	Position: 10,
 	Message: 66,
 };
+
+const packetIdsToLenght: Record<number, number> = {};
+
+for (const x in packetIds) {
+	packetIdsToLenght[(<Holder<number>>packetIds)[x]] = (<Holder<number>>packetLenght)[x];
+}
 
 export interface PlayerIdentification {
 	protocol: number;

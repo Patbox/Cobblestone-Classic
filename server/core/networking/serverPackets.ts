@@ -1,4 +1,5 @@
 import { Emitter } from '../../libs/emitter.ts';
+import { Holder } from "../types.ts";
 import { PacketReader, PacketWriter } from './helper.ts';
 
 export class ServerPacketHandler {
@@ -129,6 +130,11 @@ export class ServerPacketHandler {
 				break;
 			default:
 				this.Unknown._emit(buffer);
+		}
+
+		const lenght = packetIdsToLenght[buffer[0]] ?? 4096;
+		if (buffer.length > lenght) {
+			this._decode(buffer.slice(lenght, buffer.length));
 		}
 	}
 
@@ -318,6 +324,12 @@ export const packetLenght = {
 	Disconnect: 65,
 	UserType: 2,
 };
+
+const packetIdsToLenght: Record<number, number> = {};
+
+for (const x in packetIds) {
+	packetIdsToLenght[(<Holder<number>>packetIds)[x]] = (<Holder<number>>packetLenght)[x];
+}
 
 export interface ServerIdentification {
 	protocol: number;

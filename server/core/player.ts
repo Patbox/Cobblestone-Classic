@@ -1,6 +1,6 @@
 import { ConnectionHandler } from './networking/connection.ts';
 import { Server } from './server.ts';
-import { Nullable, Services } from './types.ts';
+import { Holder, Nullable, Services } from './types.ts';
 import { World } from './world.ts';
 
 export class Player {
@@ -12,7 +12,7 @@ export class Player {
 	position: [number, number, number];
 	pitch: number;
 	yaw: number;
-	permissions: { [i: string]: true | false | null };
+	permissions: Holder<Nullable<boolean>>;
 	groups: string[];
 	world: World;
 	isInWorld: boolean;
@@ -90,7 +90,9 @@ export class Player {
 		const result = this._server.event.PlayerTeleport._emit({ player: this, position: [x, y, z], world, yaw, pitch });
 
 		if (result) {
-			await this.changeWorld(world);
+			if (this.world != world) {
+				await this.changeWorld(world);
+			}
 
 			this.world._movePlayer(this, [x, y, z], yaw ?? this.yaw, pitch ?? this.pitch);
 
@@ -100,8 +102,8 @@ export class Player {
 		}
 	}
 
-	sendMessage(player: Nullable<Player>, message: string) {
-		this._connectionHandler.sendMessage(player, message);
+	sendMessage(message: string, player?: Player) {
+		this._connectionHandler.sendMessage(player ?? null, message);
 	}
 
 	executeCommand(command: string) {
@@ -109,8 +111,8 @@ export class Player {
 		const result = this._server.event.PlayerCommand._emit({ player: this, command });
 
 		if (result) {
-			if (this._server.commands[x[0]] != undefined) {
-				this._server.commands[x[0]].execute({ server: this._server, player: this, command, send: (t) => this.sendMessage(null, t) });
+			if (this._server._commands[x[0]] != undefined) {
+				this._server._commands[x[0]].execute({ server: this._server, player: this, command, send: (t) => this.sendMessage(t) });
 				return true;
 			}
 			return false;
@@ -124,7 +126,7 @@ export class Player {
 
 		this._server.event.PlayerDisconnect._emit({ player: this, reason: reason ?? 'Disconnected!' });
 
-		this._server.sendChatMessage(this, `&c${this.username} left the game.`);
+		this._server.sendChatMessage(this._server.getMessage('leave', { player: this.username }), this);
 		this._connectionHandler.disconnect(reason ?? 'Disconnected!');
 
 		this._server.files.savePlayer(this.uuid, this.getPlayerData());
@@ -188,13 +190,13 @@ export class Player {
 		if (message.startsWith('/')) {
 			const result = this.executeCommand(message.slice(1));
 			if (!result) {
-				this.sendMessage(null, "&cThis command doesn't exist");
+				this.sendMessage("&cThis command doesn't exist or you don't have access to it");
 			}
 		} else {
 			const result = this._server.event.PlayerMessage._emit({ player: this, message: message });
 
 			if (result) {
-				this._server.sendChatMessage(this, `&f<${this.username}> ${message}`);
+				this._server.sendChatMessage(this._server.getMessage('chat', { player: this.username, message: message }), this);
 			}
 		}
 	}

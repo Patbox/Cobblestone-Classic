@@ -2,7 +2,7 @@ import { TpcConnectionHandler } from '../native/networking/connection.ts';
 import { PlayerData } from '../core/player.ts';
 import { IFileHelper, ILogger, Server } from '../core/server.ts';
 import { World } from '../core/world.ts';
-import { fs, colors, createHash } from './deps.ts';
+import { fs, createHash } from './deps.ts';
 import { gzip, ungzip, uuid } from '../core/deps.ts';
 import { AuthData } from '../core/types.ts';
 
@@ -10,6 +10,7 @@ const textEncoder = new TextEncoder();
 
 export class NativeServer extends Server {
 	_salt: string;
+	_serverIcon: string | undefined;
 
 	constructor() {
 		super(fileHelper, logger);
@@ -17,28 +18,54 @@ export class NativeServer extends Server {
 	}
 
 	startListening() {
+		try {
+			if (fs.existsSync('./config/server-icon.png')) {
+				const file = Deno.readFileSync('./config/server-icon.png');
+
+				this._serverIcon = btoa(String.fromCharCode.apply(null, [...file]));
+			}
+		} catch (e) {
+			this.logger.error('Server icon (server-icon.png) is invalid!');
+		}
+
 		const listener = Deno.listen({ port: this.config.port });
 
 		(async () => {
 			for await (const conn of listener) {
+				if (this.isShuttingDown) {
+					return;
+				}
 				const x = new TpcConnectionHandler(conn);
 				this.connectPlayer(x);
 			}
 		})();
 
-		let isStopping = false;
-
 		(async () => {
 			for await (const _ of Deno.signal(Deno.Signal.SIGINT)) {
-				if (isStopping) {
+				if (this.isShuttingDown) {
 					return;
 				}
-
-				isStopping = true;
 
 				this.stopServer();
 
 				setTimeout(() => Deno.exit(), 500);
+			}
+		})();
+
+		(async () => {
+			const buf = new Uint8Array(1024);
+
+			for (;;) {
+				const n = await Deno.stdin.read(buf) ?? 0;
+				if (this.isShuttingDown) {
+					return;
+				}
+				const command = String.fromCharCode(...buf.slice(0, n));
+				buf.fill(0);
+				logger.writeToLog('> ' + command);
+				if (!this.executeCommand(command)) {
+					this.logger.log("&cThis command doesn't exist");
+				}
 			}
 		})();
 
@@ -57,7 +84,7 @@ export class NativeServer extends Server {
 					whitelisted: false,
 					max: this.config.maxPlayerCount,
 					motd: this.config.serverMotd,
-					//"serverIcon": "(optional, base 64 string)"
+					serverIcon: this._serverIcon,
 					players,
 				};
 
@@ -65,7 +92,7 @@ export class NativeServer extends Server {
 					method: 'POST',
 					body: JSON.stringify(obj),
 					headers: { 'Content-Type': 'application/json' },
-				}) ;
+				});
 			}
 
 			if (this.config.useMineOnlineHeartbeat) {
@@ -77,7 +104,7 @@ export class NativeServer extends Server {
 			}
 		};
 
-		f();
+		setTimeout(f, 2000);
 		setInterval(f, 1000 * 60);
 
 		this.logger.log(`&aListenning to connections on port ${this.config.port}`);
@@ -85,12 +112,10 @@ export class NativeServer extends Server {
 
 	stopServer() {
 		super.stopServer();
-		console.log('\x1b[0m');
-
 	}
 
 	async authenticatePlayer(data: AuthData): Promise<{ auth: AuthData; allow: boolean }> {
-		if (data.service == 'Minecraft') {
+		if (this.config.classicOnlineMode) {
 			const hash = createHash('md5');
 			hash.update(this._salt + data.username);
 			const hashInHex = hash.toString();
@@ -115,7 +140,7 @@ export class NativeServer extends Server {
 			}
 		}
 
-		if (this.config.allowOffline) {
+		if (this.config.allowOffline || !this.config.classicOnlineMode) {
 			return {
 				auth: {
 					username: data.username,
@@ -129,37 +154,78 @@ export class NativeServer extends Server {
 		}
 		return { auth: data, allow: false };
 	}
+
+	async startLoadingPlugins(cb: () => void) {
+		if (this._loaded) return;
+		for (const dirEntry of Deno.readDirSync('./plugins/')) {
+			if (dirEntry.isFile && (dirEntry.name.endsWith('.ts') || dirEntry.name.endsWith('.ts'))) {
+				const plugin = await import(Deno.cwd() + `/plugins/${dirEntry.name}`);
+				this.addPlugin(plugin, dirEntry.name);
+			}
+		}
+
+		cb();
+	}
 }
 
-const logger: ILogger = {
+const colorsTag = /&[0-9a-fl-or]/gi;
+
+const logger: ILogger & { writeToLog: (t: string) => void; file?: Deno.File; openedAt?: number } = {
 	log: (text: string) => {
 		const out = `&8[&f${hourNow()}&8] &f${text}`;
 
 		console.log(colorToTerminal(out));
+		logger.writeToLog(out);
 	},
 	error: (text: string) => {
 		const out = `&8[&f${hourNow()} &4Error &8] &c${text}`;
 
 		console.log(colorToTerminal(out));
+		logger.writeToLog(out);
 	},
 	warn: (text: string) => {
 		const out = `&8[&f${hourNow()} &6Warn &8] &6${text}`;
 
 		console.log(colorToTerminal(out));
+		logger.writeToLog(out);
 	},
 	chat: (text: string) => {
 		const out = `&8[&f${hourNow()}&e Chat &8] &e${text}`;
 
 		console.log(colorToTerminal(out));
+		logger.writeToLog(out);
 	},
 
 	player: (text: string) => {
 		const out = `&8[&f${hourNow()} &aPlayer &8] &1${text}`;
 
 		console.log(out);
+		logger.writeToLog(out);
 	},
 
-	storedToFile: false,
+	storedToFile: true,
+
+	writeToLog: (t: string) => {
+		const clean = t.replaceAll(colorsTag, '');
+		const date = new Date();
+		const day = date.getDay();
+
+		if (logger.openedAt != day || logger.file == undefined) {
+			logger.openedAt = day;
+			const base = Server.formatDate(date, false);
+			let name = base;
+			let n = 1;
+
+			while (fs.existsSync(`./logs/${name}.log`)) {
+				name = `${base}-${n}`;
+				n = n + 1;
+			}
+
+			logger.file = Deno.openSync(`./logs/${name}.log`, { write: true, read: true, create: true });
+		}
+
+		logger.file.writeSync(textEncoder.encode(clean + '\n'));
+	},
 };
 
 const colorMap: Record<string, string> = {
@@ -179,12 +245,15 @@ const colorMap: Record<string, string> = {
 	d: '95',
 	e: '93',
 	f: '97',
+	r: '0',
+	l: '1',
+	m: '9',
+	n: '4',
+	o: '3',
 };
 
 function colorToTerminal(text: string) {
-	return text.replaceAll(/&[0-9a-f]/gi, (x) => {
-		return `\x1b[39;${colorMap[x[1]]}m`;
-	});
+	return Deno.noColor ? text.replaceAll(colorsTag, '') : text.replaceAll(colorsTag, (x) => `\x1b[39;${colorMap[x[1]]}m`) + '\x1b[0m';
 }
 
 function hourNow(): string {
@@ -361,7 +430,7 @@ const fileHelper: IFileHelper = {
 	},
 
 	createBaseDirectories(): void {
-		['world', 'player', 'config', 'world/backup', 'logs'].forEach((x) => {
+		['world', 'player', 'config', 'world/backup', 'logs', 'plugins'].forEach((x) => {
 			if (!fs.existsSync(`./${x}`)) {
 				Deno.mkdirSync(`./${x}`);
 			}

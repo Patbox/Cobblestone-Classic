@@ -5,14 +5,9 @@ import { opensimplex } from './deps.ts';
 import { makeMurmur } from '../libs/murmur.ts'
 
 export function setupGenerators(server: Server) {
-	server.generators['flat'] = {
+	server.addGenerator({
 		name: 'flat',
 		generate: (world: World, seed2?: number) => {
-			let seed = 0;
-			if (seed2 != 0 && seed2 != undefined) {
-				seed = seed2;
-			}
-
 			const [xSize, ySize, zSize] = world.size;
 
 			for (let y = 0; y < ySize; y++) {
@@ -24,9 +19,9 @@ export function setupGenerators(server: Server) {
 				}
 			}
 		},
-	};
+	});
 
-	server.generators['grasslands'] = {
+	server.addGenerator({
 		name: 'grasslands',
 		generate: (world: World, seed2?: number) => {
 			let seed = Math.floor(Math.random() * 10000);
@@ -122,7 +117,7 @@ export function setupGenerators(server: Server) {
 				}
 			}
 		},
-	};
+	});
 }
 
 function dist(x: number, y: number, z: number): number {

@@ -2,6 +2,9 @@
 const textDecoder = new TextDecoder('us-ascii')
 const textEncoder = new TextEncoder();
 
+export const classicTextRegex = /[^ -~]/ig;
+
+
 export class PacketReader {
 	buffer: Uint8Array
 	view: DataView
@@ -74,7 +77,7 @@ export class PacketWriter {
 	}
 
 	writeString(n: string) {
-		const b = textEncoder.encode(n);
+		const b = textEncoder.encode(n.replaceAll(classicTextRegex, '_'));
 
 		if (b.length > 64) {
 			throw 'Too long string!'
