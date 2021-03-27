@@ -1,34 +1,36 @@
-import { Holder } from "./types.ts";
+import { Holder } from './types.ts';
 
 export class Block {
 	unbreakable: boolean;
 	numId: number;
 	type: BlockTypes;
 	solid: boolean;
+	placeable: boolean;
 
-	constructor(id: number, type: BlockTypes = 'full', unbreakable: boolean = false) {
+	constructor(id: number, placeable: boolean = true, type: BlockTypes = 'full', unbreakable: boolean = false) {
 		this.numId = id;
 		this.type = type;
 		this.unbreakable = unbreakable;
 		this.solid = type == 'full' || type == 'slab';
+		this.placeable = placeable;
 	}
 }
 
 export type BlockTypes = 'full' | 'fluid' | 'plant' | 'slab' | 'air';
 
 export const blocks = {
-	air: new Block(0, 'air'),
+	air: new Block(0, true, 'air'),
 	stone: new Block(1),
-	grass: new Block(2),
+	grass: new Block(2, false),
 	dirt: new Block(3),
 	cobblestone: new Block(4),
 	planks: new Block(5),
-	sapling: new Block(6, 'plant'),
-	bedrock: new Block(7, 'full', true),
-	flowingWater: new Block(8, 'fluid', false),
-	water: new Block(9, 'fluid', false),
-	flowingLava: new Block(10, 'fluid', false),
-	lava: new Block(11, 'fluid', false),
+	sapling: new Block(6, true, 'plant'),
+	bedrock: new Block(7, false, 'full', true),
+	flowingWater: new Block(8, false, 'fluid', false),
+	water: new Block(9, false, 'fluid', false),
+	flowingLava: new Block(10, false, 'fluid', false),
+	lava: new Block(11, false, 'fluid', false),
 	sand: new Block(12),
 	gravel: new Block(13),
 	goldOre: new Block(14),
@@ -54,10 +56,10 @@ export const blocks = {
 	black: new Block(34),
 	gray: new Block(35),
 	white: new Block(36),
-	dantelion: new Block(37, 'plant'),
-	rose: new Block(38, 'plant'),
-	brownMushroom: new Block(39, 'plant'),
-	redMushroom: new Block(40, 'plant'),
+	dantelion: new Block(37, true, 'plant'),
+	rose: new Block(38, true, 'plant'),
+	brownMushroom: new Block(39, true, 'plant'),
+	redMushroom: new Block(40, true, 'plant'),
 	gold: new Block(41),
 	iron: new Block(42),
 	doubleSlab: new Block(43),
@@ -121,7 +123,6 @@ export const blockIds = {
 	moss: 48,
 	obsidian: 49,
 };
-
 
 export const blocksIdsToName: Record<number, string> = {};
 

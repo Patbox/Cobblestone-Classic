@@ -125,7 +125,9 @@ export class ConnectionHandler {
 		}
 
 		if (this.isConnected) {
-			this._server?.logger.conn(`User ${this.ip}:${this.port} ${this._player ? '(' + this._player.username + ')' : ''} disconnected! Reason ${message}`)
+			if (this._player) {
+				this._server?.logger.conn(`User ${this.ip}:${this.port} (${this._player.username}) disconnected! Reason ${message}`);
+			}
 			this.isConnected = false;
 			this._send(serverPackets.encodeDisconnect({ reason: message }));
 		}

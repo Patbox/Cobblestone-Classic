@@ -147,6 +147,8 @@ export class Server {
 				});
 
 				if (result.allow) {
+					this.logger.conn(result.auth.service == 'Unknown' ? `User ${result.auth.username} (${result.auth.uuid}) doesn't use any auth...` : `User ${result.auth.username} (${result.auth.uuid}) is logged with ${result.auth.service} auth!`)
+
 					const player = new Player(
 						result.auth.uuid ?? 'offline-' + result.auth.username.toLowerCase(),
 						result.auth.username,

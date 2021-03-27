@@ -5,10 +5,10 @@ import { Holder, Nullable, Services, XYZ } from './types.ts';
 import { Byte, decode as decodeNBT, encode as encodeNBT, Short, Tag, TagObject } from '../libs/nbt/index.ts';
 
 import { uuid } from './deps.ts';
-import { blocks, Block, blocksIdsToName } from "./blocks.ts";
+import { blocks, Block, blocksIdsToName } from './blocks.ts';
 
 export class World {
-	blockData: Uint8Array;
+	readonly blockData: Uint8Array;
 
 	readonly size: [number, number, number];
 	readonly uuid: string;
@@ -155,25 +155,45 @@ export class World {
 		try {
 			const decoded = decodeNBT(data);
 
-			const main = decoded.value as TagObject;
+			const main = <TagObject>decoded.value;
 
-			const id = uuid.stringify(main.UUID as Uint8Array);
-			const blocks = main.BlockArray as Uint8Array;
-			const spawn = main.Spawn as { [i: string]: { value: number } };
-			const createdBy = main.CreatedBy as { Service?: Services; Username: string };
-			const generator = main.MapGenerator as { Software?: string; MapGeneratorName: string };
+			const id = uuid.stringify(<Uint8Array>main.UUID);
+			const blocks = <Uint8Array>main.BlockArray;
+			const blocks2 = <Uint8Array | undefined>main.BlockArray2;
+
+			const spawn = <{ [i: string]: { value: number } }>main.Spawn;
+			const createdBy = <{ Service?: Services; Username: string }>main.CreatedBy;
+			const generator = <{ Software?: string; MapGeneratorName: string }>main.MapGenerator;
 
 			const blockData = new Uint8Array(4 + blocks.length);
 			const view = new DataView(blockData.buffer, blockData.byteOffset, blockData.byteLength);
 
+			const metadata = <TagObject>main?.Metadata ?? {};
+
 			view.setUint32(0, blocks.length);
-			blockData.set(blocks, 4);
+
+			const fallback: Uint8Array | undefined = <Uint8Array>(<TagObject>(<TagObject>metadata.CPE)?.CustomBlocks)?.Fallback;
+
+			const getBlockAt =
+				blocks2 != undefined
+					? (x: number) => {
+							return blocks[x] | (blocks2[x] << 8);
+						}
+					: (x: number) => blocks[x];
+
+			if (fallback != undefined) {
+				for (let x = 0; x < blocks.length; x++) {
+					view.setUint8(4 + x, fallback[getBlockAt(x)] ?? 0);
+				}
+			} else {
+				blockData.set(blocks, 4);
+			}
 
 			return {
 				uuid: id,
 				name: main?.Name as string,
 				blockData: blockData,
-				size: [(main.X as Short).value, (main.Y as Short).value, (main.Z as Short).value],
+				size: [(<Short>main.X).value, (<Short>main.Y).value, (<Short>main.Z).value],
 				spawnPoint: [spawn.X.value / 32, spawn.Y.value / 32, spawn.Z.value / 32],
 				spawnPointYaw: spawn.H.value,
 				spawnPointPitch: spawn.P.value,
@@ -181,14 +201,14 @@ export class World {
 					service: createdBy?.Service ?? 'Unknown',
 					username: createdBy?.Username ?? 'Unknown',
 				},
-				timeCreated: (main?.TimeCreated as bigint) ?? Date.now(),
-				lastModified: (main?.LastModified as bigint) ?? Date.now(),
+				timeCreated: <bigint>main?.TimeCreated ?? Date.now(),
+				lastModified: <bigint>main?.LastModified ?? Date.now(),
 				generator: {
 					software: generator?.Software ?? 'Unknown',
 					type: generator?.MapGeneratorName ?? 'Unknown',
 				},
 
-				_metadata: main?.Metadata ?? {},
+				_metadata: metadata,
 			};
 		} catch (e) {
 			return null;

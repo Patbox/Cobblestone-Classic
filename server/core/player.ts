@@ -3,6 +3,7 @@ import { Server } from './server.ts';
 import { Holder, Nullable, Services } from './types.ts';
 import { World } from './world.ts';
 import * as vec from '../libs/vec.ts';
+import { Block, blocks, blocksIdsToName } from './blocks.ts';
 
 export class Player {
 	username: string;
@@ -25,7 +26,7 @@ export class Player {
 
 	constructor(uuid: string, username: string, client: string, service: Services, connection: ConnectionHandler, server: Server) {
 		this.ip = connection.ip;
-		
+
 		this.username = username;
 		this.service = service;
 
@@ -154,7 +155,7 @@ export class Player {
 			world: this.world.fileName,
 			pitch: this.pitch,
 			yaw: this.yaw,
-			ip: this.ip
+			ip: this.ip,
 		};
 	}
 
@@ -190,6 +191,11 @@ export class Player {
 	}
 
 	_action_block_place(x: number, y: number, z: number, block: number) {
+		if (!this.world.isInBounds(x, y, z) || !(<Holder<Block>>blocks)[blocksIdsToName[block]].placeable) {
+			this._connectionHandler.setBlock(x, y, z, this.world.getBlock(x, y, z));
+			return;
+		}
+
 		const result = this._server.event.PlayerBlockPlace._emit({ player: this, position: [x, y, z], block, world: this.world });
 
 		if (result) {
@@ -200,6 +206,11 @@ export class Player {
 	}
 
 	_action_block_break(x: number, y: number, z: number, block: number) {
+		if (!this.world.isInBounds(x, y, z) || !(<Holder<Block>>blocks)[blocksIdsToName[block]].placeable) {
+			this._connectionHandler.setBlock(x, y, z, this.world.getBlock(x, y, z));
+			return;
+		}
+		
 		const result = this._server.event.PlayerBlockBreak._emit({ player: this, position: [x, y, z], block, world: this.world });
 
 		if (result) {

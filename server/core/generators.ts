@@ -37,7 +37,7 @@ export function setupGenerators(server: Server) {
 			const caveNoise2 = opensimplex.makeNoise3D(Math.round(seed * 10000));
 
 			const [xSize, ySize, zSize] = world.size;
-			const index = (x: number, y: number, z: number) => (y < 1 ? 1 : y >= ySize ? 0 : x + xSize * (z + zSize * y));
+			const index = (x: number, y: number, z: number) => x + xSize * (z + zSize * y);
 
 			const tempWorld = new Uint8Array(world.blockData.length - 4);
 

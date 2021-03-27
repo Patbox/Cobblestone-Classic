@@ -14,7 +14,9 @@ export class NativeServer extends Server {
 
 	constructor() {
 		super(fileHelper, logger);
-		this._salt = <string>uuid.v4();
+		const hash = createHash('md5');
+		hash.update(<string>uuid.v4());
+		this._salt = hash.toString();
 	}
 
 	startListening() {
@@ -99,7 +101,7 @@ export class NativeServer extends Server {
 				fetch(
 					`https://mineonline.codie.gg/heartbeat.jsp?port=${this.config.port}&max=${this.config.maxPlayerCount}&name=${escape(
 						this.config.serverName
-					)}&public=${this.config.publicOnMineOnline}&version=7&salt=${this._salt}`
+					)}&public=${this.config.publicOnMineOnline ? 'True' : 'False'}&version=7&salt=${this._salt}&users=${players.length}`
 				);
 			}
 		};
@@ -121,7 +123,7 @@ export class NativeServer extends Server {
 			const hashInHex = hash.toString();
 
 			if (hashInHex == data.secret) {
-				const moj: { id: string; username: string; error?: string } = await (
+				const moj: { id: string; name: string; error?: string } = await (
 					await fetch('https://api.mojang.com/users/profiles/minecraft/' + data.username)
 				).json();
 
@@ -130,7 +132,7 @@ export class NativeServer extends Server {
 						allow: true,
 						auth: {
 							uuid: 'minecraft-' + moj.id,
-							username: moj.username,
+							username: moj.name,
 							service: 'Minecraft',
 							secret: null,
 							authenticated: true,
