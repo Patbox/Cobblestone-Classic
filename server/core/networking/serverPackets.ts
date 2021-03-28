@@ -3,6 +3,10 @@ import { Holder } from "../types.ts";
 import { PacketReader, PacketWriter } from './helper.ts';
 
 export class ServerPacketHandler {
+	packetIds = packetIds;
+	packetLenght = packetIdsToLenght;
+	packetIdsToLenght = packetIdsToLenght
+	
 	ServerIdentification = new Emitter<ServerIdentification>();
 	Ping = new Emitter<null>();
 	LevelInitialize = new Emitter<null>();

@@ -1,49 +1,52 @@
 import { Emitter } from '../libs/emitter.ts';
 import { Player, PlayerData } from './player.ts';
-import { World, WorldData, WorldGenerator } from './world.ts';
+import { World, WorldData, WorldGenerator } from './world/world.ts';
 
 import * as event from './events.ts';
-import { AuthData, Holder, ICommand, IGroup, IPlugin, Nullable, XYZ } from './types.ts';
+import { AuthData, Holder, Command, Group, Plugin, Nullable, XYZ } from './types.ts';
 import { ConnectionHandler } from './networking/connection.ts';
-import { setupGenerators } from './generators.ts';
+import { setupGenerators } from './world/generators.ts';
 import { semver } from './deps.ts';
-import { blocks, blockIds, blocksIdsToName } from './blocks.ts';
+import { blocks, blockIds, blocksIdsToName } from './world/blocks.ts';
+import { setupCommands } from './commands.ts';
 
 export class Server {
 	readonly softwareName = 'Cobblestone';
-	readonly softwareVersion = '0.0.2';
-	readonly _apiVersion = '0.0.2';
-	readonly _minimalApiVersion = '0.0.2';
+	readonly softwareVersion = '0.0.3';
+	readonly _apiVersion = '0.0.3';
+	readonly _minimalApiVersion = '0.0.3';
 
 	readonly files: IFileHelper;
 	readonly logger: ILogger;
 	readonly event = {
-		PlayerConnect: new Emitter<event.PlayerConnect>(),
-		PlayerDisconnect: new Emitter<event.PlayerDisconnect>(),
-		PlayerChangeWorld: new Emitter<event.PlayerChangeWorld>(),
-		PlayerMove: new Emitter<event.PlayerMove>(),
-		PlayerColides: new Emitter<event.PlayerColides>(),
-		PlayerMessage: new Emitter<event.PlayerMessage>(),
-		PlayerTeleport: new Emitter<event.PlayerTeleport>(),
-		PlayerBlockBreak: new Emitter<event.PlayerChangeBlock>(),
-		PlayerBlockPlace: new Emitter<event.PlayerChangeBlock>(),
-		PlayerCommand: new Emitter<event.PlayerCommand>(),
+		PlayerConnect: new Emitter<event.PlayerConnect>(true),
+		PlayerDisconnect: new Emitter<event.PlayerDisconnect>(true),
+		PlayerChangeWorld: new Emitter<event.PlayerChangeWorld>(true),
+		PlayerMove: new Emitter<event.PlayerMove>(true),
+		PlayerColides: new Emitter<event.PlayerColides>(true),
+		PlayerMessage: new Emitter<event.PlayerMessage>(true),
+		PlayerTeleport: new Emitter<event.PlayerTeleport>(true),
+		PlayerBlockBreak: new Emitter<event.PlayerChangeBlock>(true),
+		PlayerBlockPlace: new Emitter<event.PlayerChangeBlock>(true),
+		PlayerCommand: new Emitter<event.PlayerCommand>(true),
 		ServerShutdown: new Emitter<Server>(),
 		ServerLoadingFinished: new Emitter<Server>(),
+		ServerCommandRegistration: new Emitter<Server>(),
 	};
 
 	readonly worlds: Holder<World> = {};
 	readonly players: Holder<Player> = {};
 	readonly _generators: Holder<WorldGenerator> = {};
-	readonly _commands: Holder<ICommand> = {};
-	readonly _plugins: Holder<IPlugin> = {};
+	readonly _commands: Holder<Command> = {};
+	readonly _plugins: Holder<Plugin> = {};
 	readonly blocks = blocks;
 	readonly blockIds = blockIds;
 	readonly blockIdsToNames = blocksIdsToName;
 
-	readonly groups: Holder<IGroup> = {};
+	readonly groups: Holder<Group> = {};
 
 	readonly classicTextRegex = /[^ -~]/gi;
+
 	config: IConfig;
 
 	_takenPlayerIds: number[] = [];
@@ -72,7 +75,7 @@ export class Server {
 		}
 
 		if (files.existConfig('groups')) {
-			this.groups = { ...(<Holder<IGroup>>files.getConfig('groups')) };
+			this.groups = { ...(<Holder<Group>>files.getConfig('groups')) };
 		} else {
 			this.groups['default'] = { name: 'default', permissions: {} };
 		}
@@ -103,14 +106,29 @@ export class Server {
 			}, 1000 * 60 * this.config.backupInterval);
 		}
 
-		this.startLoadingPlugins(() => {
-			this.startListening();
+		setupCommands(this);
 
-			logger.log('Server started!');
+		try {
+			this.startLoadingPlugins(() => {
+				this.event.ServerCommandRegistration._emit(this);
+				try {
+					this.startListening();
+				} catch (e) {
+					this.logger.error(e);
+					this.stopServer();
+				}
 
-			this._loaded = true;
-			this.event.ServerLoadingFinished._emit(this);
-		});
+				logger.log('Server started!');
+
+				this._loaded = true;
+				this.event.ServerLoadingFinished._emit(this);
+			});
+		} catch (e) {
+			this.logger.error('Error occured while loading plugins!');
+			this.logger.error(e);
+
+			this.stopServer();
+		}
 	}
 
 	startListening() {}
@@ -134,7 +152,7 @@ export class Server {
 	connectPlayer(conn: ConnectionHandler, client?: string, overrides?: AuthData) {
 		try {
 			conn._server = this;
-			this.logger.conn(`Connection from ${conn.ip}:${conn.port}...`)
+			this.logger.conn(`Connection from ${conn.ip}:${conn.port}...`);
 			conn._clientPackets.PlayerIdentification.once(async ({ value: playerInfo }) => {
 				conn.sendServerInfo(this);
 
@@ -147,7 +165,11 @@ export class Server {
 				});
 
 				if (result.allow) {
-					this.logger.conn(result.auth.service == 'Unknown' ? `User ${result.auth.username} (${result.auth.uuid}) doesn't use any auth...` : `User ${result.auth.username} (${result.auth.uuid}) is logged with ${result.auth.service} auth!`)
+					this.logger.conn(
+						result.auth.service == 'Unknown'
+							? `User ${result.auth.username} (${result.auth.uuid}) doesn't use any auth...`
+							: `User ${result.auth.username} (${result.auth.uuid}) is logged with ${result.auth.service} auth!`
+					);
 
 					const player = new Player(
 						result.auth.uuid ?? 'offline-' + result.auth.username.toLowerCase(),
@@ -161,7 +183,7 @@ export class Server {
 					this.players[player.uuid] = player;
 
 					player.changeWorld(player.world);
-					this.sendChatMessage(this.getMessage('join', { player: player.username }), player);
+					this.sendChatMessage(this.getMessage('join', { player: player.getDisplayName() }), player);
 				} else {
 					conn.disconnect('You need to log in!');
 				}
@@ -178,9 +200,8 @@ export class Server {
 
 	executeCommand(command: string): boolean {
 		const x = command.split(' ');
-
 		if (this._commands[x[0]] != undefined) {
-			this._commands[x[0]].execute({ server: this, player: null, command, send: (t) => this.logger.log });
+			this._commands[x[0]].execute({ server: this, player: null, command, send: this.logger.log, checkPermission: (x) => true });
 			return true;
 		}
 		return false;
@@ -197,16 +218,22 @@ export class Server {
 	}
 
 	loadWorld(name: string): Nullable<World> {
-		if (this.worlds[name] != undefined) {
-			return this.worlds[name];
-		} else {
-			const data = this.files.getWorld(name);
+		try {
+			if (this.worlds[name] != undefined) {
+				return this.worlds[name];
+			} else {
+				const data = this.files.getWorld(name);
 
-			if (data != null) {
-				const world = new World(name, data, this);
-				this.worlds[name] = world;
-				return world;
+				if (data != null) {
+					const world = new World(name, data, this);
+					this.worlds[name] = world;
+					return world;
+				}
+				return null;
 			}
+		} catch (e) {
+			this.logger.error(`Couldn't load world ${name}!`);
+			this.logger.error(e);
 			return null;
 		}
 	}
@@ -227,45 +254,53 @@ export class Server {
 	}
 
 	createWorld(name: string, size: XYZ, generator: WorldGenerator, seed?: number, player?: Player): Nullable<World> {
-		if (this.worlds[name] != undefined) {
-			return this.worlds[name];
-		}
+		try {
+			if (this.worlds[name] != undefined) {
+				return this.worlds[name];
+			}
 
-		const world = new World(
-			name.toLowerCase().replace(' ', '_'),
-			{
-				name,
-				size,
-				generator: { software: this.softwareName, type: generator.name },
-				createdBy: {
-					service: player?.service ?? 'Unknown',
-					username: player?.service ?? `${this.softwareName} - ${generator.name}`,
+			const world = new World(
+				name.toLowerCase().replace(' ', '_'),
+				{
+					name,
+					size,
+					generator: { software: this.softwareName, type: generator.name },
+					createdBy: {
+						service: player?.service ?? 'Unknown',
+						username: player?.service ?? `${this.softwareName} - ${generator.name}`,
+					},
+					spawnPoint: [size[0] / 2, size[1] / 2 + 20, size[2] / 2],
 				},
-				spawnPoint: [size[0] / 2, size[1] / 2 + 20, size[2] / 2],
-			},
-			this
-		);
+				this
+			);
 
-		generator.generate(world);
-		world.spawnPoint[1] = world.getHighestBlock(world.spawnPoint[0], world.spawnPoint[2], true);
+			generator.generate(world);
+			world.spawnPoint[1] = world.getHighestBlock(world.spawnPoint[0], world.spawnPoint[2], true);
 
-		this.worlds[name] = world;
+			this.worlds[name] = world;
 
-		this.saveWorld(world);
+			this.saveWorld(world);
 
-		return world;
+			return world;
+		} catch (e) {
+			this.logger.error(
+				`Couldn't create world ${name} (size: ${size}, generator: ${generator?.name}, seed: ${seed ?? 0}, player: ${player?.username ?? null})!`
+			);
+			this.logger.error(e);
+			return null;
+		}
 	}
 
-	async addPlugin(plugin: IPlugin, altid?: string): Promise<Nullable<IPlugin>> {
+	async addPlugin(plugin: Plugin, altid?: string): Promise<Nullable<Plugin>> {
 		const textId = altid != undefined ? `${plugin.id} | ${altid}` : plugin.id;
 
-		if (!plugin.id || !plugin.init || !plugin.version || !plugin.api) {
-			altid ? this.logger.warn(`Plugin ${altid} isn't a valid plguin. Skipping...`) : null;
+		if (!plugin.id || !plugin.init || !plugin.version || !plugin.cobblestoneApi) {
+			altid ? this.logger.warn(`Plugin ${altid ?? '!NOID'} isn't a valid plguin. Skipping...`) : null;
 			return null;
 		}
 
 		try {
-			const api = semver.valid(plugin.api);
+			const api = semver.valid(plugin.cobblestoneApi);
 			if (api != null) {
 				if (semver.gte(api, this._minimalApiVersion)) {
 					if (semver.lte(api, this.softwareVersion)) {
@@ -301,11 +336,11 @@ export class Server {
 		cb();
 	}
 
-	getPlugin(plugin: string): Nullable<IPlugin> {
+	getPlugin(plugin: string): Nullable<Plugin> {
 		return this._plugins[plugin] ?? null;
 	}
 
-	addCommand(command: ICommand): boolean {
+	addCommand(command: Command): boolean {
 		if (command.name.includes(' ')) {
 			return false;
 		}
@@ -314,7 +349,7 @@ export class Server {
 		return true;
 	}
 
-	getCommand(command: string): Nullable<ICommand> {
+	getCommand(command: string): Nullable<Command> {
 		return this._commands[command] ?? null;
 	}
 
@@ -339,6 +374,10 @@ export class Server {
 		}
 
 		return message;
+	}
+
+	getPlayerIdFromName(username: string): Nullable<string> {
+		return null;
 	}
 
 	static formatDate(date: number | Date, showTime = true): string {
@@ -390,6 +429,7 @@ export interface IFileHelper {
 export interface IConfig {
 	address: string;
 	port: number;
+	voxelSrvPort: number;
 
 	serverName: string;
 	serverMotd: string;
@@ -408,6 +448,10 @@ export interface IConfig {
 	publicOnVoxelSrv: boolean;
 	allowOffline: boolean;
 
+	VoxelSrvUseWSS: boolean;
+	VoxelSrvWssOptions: { key: string, cert: string },
+
+
 	messages: {
 		join: string;
 		leave: string;
@@ -425,6 +469,7 @@ export interface IConfig {
 const defaultConfig: IConfig = {
 	address: 'localhost',
 	port: 25566,
+	voxelSrvPort: 25567,
 
 	serverName: 'Cobblestone',
 	serverMotd: 'Another Minecraft Classic server!',
@@ -443,9 +488,12 @@ const defaultConfig: IConfig = {
 	publicOnVoxelSrv: false,
 	allowOffline: true,
 
+	VoxelSrvUseWSS: false,
+	VoxelSrvWssOptions: { key: '', cert: '' },
+
 	messages: {
-		join: '&ePlayer <$PLAYER> joined the game',
-		leave: '&ePlayer <$PLAYER> left the game',
+		join: '&e$PLAYER joined the game',
+		leave: '&e$PLAYER left the game',
 		chat: '&f<$PLAYER> $MESSAGE',
 		noCommand: "&cThis command doesn't exist or you don't have access to it",
 		serverStopped: 'Server stopped!',

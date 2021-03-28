@@ -1,17 +1,19 @@
 import { ConnectionHandler } from './networking/connection.ts';
 import { Server } from './server.ts';
 import { Holder, Nullable, Services } from './types.ts';
-import { World } from './world.ts';
+import { World } from './world/world.ts';
 import * as vec from '../libs/vec.ts';
-import { Block, blocks, blocksIdsToName } from './blocks.ts';
+import { Block, blocks, blocksIdsToName } from './world/blocks.ts';
 
 export class Player {
-	username: string;
+	readonly username: string;
 	readonly uuid: string;
 	readonly numId: number;
 	readonly ip: string;
+	readonly service: Services;
+
+	displayName: Nullable<string> = null;
 	client: string;
-	service: Services;
 	position: [number, number, number];
 	pitch: number;
 	yaw: number;
@@ -61,6 +63,7 @@ export class Player {
 			this.world = server.worlds[data.world];
 			this.pitch = data.pitch;
 			this.yaw = data.yaw;
+			this.displayName = data.displayName ?? null;
 		} else {
 			this.world = server.worlds[server.config.defaultWorldName];
 
@@ -100,10 +103,11 @@ export class Player {
 			}
 
 			this.world._movePlayer(this, [x, y, z], yaw ?? this.yaw, pitch ?? this.pitch);
-
 			this.position = [x, y, z];
 			this.pitch = pitch ?? this.pitch;
 			this.yaw = yaw ?? this.yaw;
+
+			this._connectionHandler.sendTeleport(this, [x, y, z], yaw ?? this.yaw, pitch ?? this.pitch)
 		}
 	}
 
@@ -116,8 +120,15 @@ export class Player {
 		const result = this._server.event.PlayerCommand._emit({ player: this, command });
 
 		if (result) {
-			if (this._server._commands[x[0]] != undefined) {
-				this._server._commands[x[0]].execute({ server: this._server, player: this, command, send: (t) => this.sendMessage(t) });
+			const cmd = this._server._commands[x[0]];
+			if (cmd && (!cmd.permission || this.checkPermission(cmd.permission))) {
+				cmd.execute({
+					server: this._server,
+					player: this,
+					command,
+					send: (t) => this.sendMessage(t),
+					checkPermission: (x) => this.checkPermission(x),
+				});
 				return true;
 			}
 			return false;
@@ -135,6 +146,53 @@ export class Player {
 		this._connectionHandler.disconnect(reason ?? 'Disconnected!');
 
 		this._server.files.savePlayer(this.uuid, this.getPlayerData());
+	}
+
+	checkPermission(permission: string): Nullable<boolean> {
+		{
+			const check = this.checkPermissionExact(permission);
+			if (check != null) {
+				return check;
+			}
+		}
+		{
+			const check = this.checkPermissionExact('*');
+			if (check != null) {
+				return check;
+			}
+		}
+
+		const splited = permission.split('.');
+		let perm = '';
+
+		for (let x = 0; x < splited.length; x++) {
+			perm += splited[x] + '.';
+
+			const check = this.checkPermissionExact(perm + '*');
+			if (check != null) {
+				return check;
+			}
+		}
+
+		return null;
+	}
+
+	checkPermissionExact(permission: string): Nullable<boolean> {
+		if (this.permissions[permission] != null) {
+			return !!this.permissions[permission];
+		}
+
+		for (const groupName in this.groups) {
+			const group = this._server.groups[groupName];
+
+			if (group != null) {
+				if (group.permissions[permission] != null) {
+					return !!group.permissions[permission];
+				}
+			}
+		}
+
+		return null;
 	}
 
 	_removeFromServer() {
@@ -156,7 +214,12 @@ export class Player {
 			pitch: this.pitch,
 			yaw: this.yaw,
 			ip: this.ip,
+			displayName: this.displayName,
 		};
+	}
+
+	getDisplayName(): string {
+		return this.displayName ?? this.username;
 	}
 
 	_action_move(x: number, y: number, z: number, yaw: number, pitch: number) {
@@ -210,7 +273,7 @@ export class Player {
 			this._connectionHandler.setBlock(x, y, z, this.world.getBlock(x, y, z));
 			return;
 		}
-		
+
 		const result = this._server.event.PlayerBlockBreak._emit({ player: this, position: [x, y, z], block, world: this.world });
 
 		if (result) {
@@ -230,7 +293,7 @@ export class Player {
 			const result = this._server.event.PlayerMessage._emit({ player: this, message: message });
 
 			if (result) {
-				this._server.sendChatMessage(this._server.getMessage('chat', { player: this.username, message: message }), this);
+				this._server.sendChatMessage(this._server.getMessage('chat', { player: this.getDisplayName(), message: message }), this);
 			}
 		}
 	}
@@ -271,4 +334,5 @@ export interface PlayerData {
 	pitch: number;
 	yaw: number;
 	ip: string;
+	displayName: Nullable<string>;
 }

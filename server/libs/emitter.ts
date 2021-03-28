@@ -1,4 +1,10 @@
 export class Emitter<T> {
+	readonly cancelable: boolean;
+
+	constructor(cancelable = false) {
+		this.cancelable = cancelable;
+	}
+
 	private events: {
 		call: EventCallback<T>;
 		remove: boolean;
@@ -28,17 +34,25 @@ export class Emitter<T> {
 		const ctx: EventContext<T> = {
 			value: data,
 			canceled: false,
+			position: 0,
 		};
 
-		this.events = this.events.filter((x) => {
-			if (isCanceled) {
-				return true;
-			}
-
-			x.call(ctx);
-			isCanceled = ctx.canceled;
-			return !x.remove;
-		});
+		this.events = this.cancelable
+			? this.events.filter((ev, i) => {
+					if (isCanceled) {
+						return true;
+					}
+					ctx.position = i;
+					ev.call(ctx);
+					isCanceled = ctx.canceled;
+					return !ev.remove;
+				})
+			: this.events.filter((ev, i) => {
+					ctx.canceled = false;
+					ctx.position = i;
+					ev.call(ctx);
+					return !ev.remove;
+				});
 
 		return !isCanceled;
 	}
@@ -46,6 +60,7 @@ export class Emitter<T> {
 
 export interface EventContext<T> {
 	readonly value: T;
+	position: number;
 	canceled: boolean;
 }
 

@@ -1,4 +1,4 @@
-import { World } from '../world.ts';
+import { World } from '../world/world.ts';
 import { ClientPacketHandler } from './clientPackets.ts';
 import { ServerPacketHandler } from './serverPackets.ts';
 import { gzip } from '../deps.ts';
@@ -170,6 +170,8 @@ export class ConnectionHandler {
 				pitch: player.pitch,
 			})
 		);
+
+		this.sendTeleport(player, player.position, player.yaw, player.pitch);
 	}
 
 	sendDespawnPlayer(player: Player) {

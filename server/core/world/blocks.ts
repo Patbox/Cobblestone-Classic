@@ -1,4 +1,4 @@
-import { Holder } from './types.ts';
+import type { Holder } from '../types.ts';
 
 export class Block {
 	unbreakable: boolean;

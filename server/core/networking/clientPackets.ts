@@ -3,6 +3,10 @@ import { Holder } from "../types.ts";
 import { PacketReader, PacketWriter } from './helper.ts';
 
 export class ClientPacketHandler {
+	packetIds = packetIds;
+	packetLenght = packetIdsToLenght;
+	packetIdsToLenght = packetIdsToLenght
+
 	PlayerIdentification = new Emitter<PlayerIdentification>();
 	SetBlock = new Emitter<SetBlock>();
 	Position = new Emitter<Position>();

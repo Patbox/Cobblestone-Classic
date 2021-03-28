@@ -1,5 +1,5 @@
 import { Player } from './player.ts';
-import { World } from './world.ts';
+import { World } from './world/world.ts';
 
 export interface PlayerConnect {
 	player: Player;

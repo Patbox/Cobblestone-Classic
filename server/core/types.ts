@@ -1,5 +1,5 @@
-import { Player } from "./player.ts";
-import { Server } from "./server.ts";
+import { Player } from './player.ts';
+import { Server } from './server.ts';
 
 export type XYZ = [number, number, number];
 
@@ -12,27 +12,28 @@ export interface AuthData {
 	service: Services;
 	uuid: Nullable<string>;
 	secret: Nullable<string>;
-	authenticated: boolean
+	authenticated: boolean;
 }
 
-export type Holder<T> = {[i: string]: T}
+export type Holder<T> = { [i: string]: T };
 
-export interface ICommand {
+export interface Command {
 	name: string;
 	description: string;
 	permission?: string;
-	execute: (ctx: ICommandContext) => void;
-	help?: string[];
+	execute: (ctx: CommandContext) => void;
+	help?: HelpPage[];
 }
 
-export interface ICommandContext {
+export interface CommandContext {
 	command: string;
 	player: Nullable<Player>;
 	server: Server;
 	send: (text: string) => void;
+	checkPermission: (permission: string) => Nullable<boolean>;
 }
 
-export interface IGroup {
+export interface Group {
 	name: string;
 	visibleName?: string;
 	prefix?: string;
@@ -41,11 +42,17 @@ export interface IGroup {
 	permissions: { [i: string]: Nullable<boolean> };
 }
 
-export interface IPlugin {
+export interface Plugin {
 	id: string;
 	name: string;
 	version: string;
-	api: string;
+	cobblestoneApi: string;
 	init: (server: Server) => void;
 	[i: string]: unknown;
+}
+
+export interface HelpPage {
+	number: number;
+	title: string;
+	lines: string[];
 }

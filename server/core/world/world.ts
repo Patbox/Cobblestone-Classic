@@ -1,10 +1,10 @@
-import { Player } from './player.ts';
-import { Server } from './server.ts';
-import { Holder, Nullable, Services, XYZ } from './types.ts';
+import type { Player } from '../player.ts';
+import type { Server } from '../server.ts';
+import type { Holder, Nullable, Services, XYZ } from '../types.ts';
 
-import { Byte, decode as decodeNBT, encode as encodeNBT, Short, Tag, TagObject } from '../libs/nbt/index.ts';
+import { Byte, decode as decodeNBT, encode as encodeNBT, Short, Tag, TagObject } from '../../libs/nbt/index.ts';
 
-import { uuid } from './deps.ts';
+import { uuid } from '../deps.ts';
 import { blocks, Block, blocksIdsToName } from './blocks.ts';
 
 export class World {

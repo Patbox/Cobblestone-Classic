@@ -1,8 +1,8 @@
-import { Server } from './server.ts';
-import { World } from './world.ts';
+import type { Server } from '../server.ts';
+import type { World } from './world.ts';
 import { blockIds } from './blocks.ts';
-import { opensimplex } from './deps.ts';
-import { makeMurmur } from '../libs/murmur.ts'
+import { opensimplex } from '../deps.ts';
+import { makeMurmur } from '../../libs/murmur.ts'
 
 export function setupGenerators(server: Server) {
 	server.addGenerator({

@@ -1,8 +1,8 @@
-import { TpcConnectionHandler } from '../native/networking/connection.ts';
+import { TpcConnectionHandler, VoxelSrvConnectionHandler } from '../native/networking/connection.ts';
 import { PlayerData } from '../core/player.ts';
 import { IFileHelper, ILogger, Server } from '../core/server.ts';
-import { World } from '../core/world.ts';
-import { fs, createHash } from './deps.ts';
+import { World } from '../core/world/world.ts';
+import { fs, createHash, wss, serve, serveTLS } from './deps.ts';
 import { gzip, ungzip, uuid } from '../core/deps.ts';
 import { AuthData } from '../core/types.ts';
 
@@ -42,6 +42,41 @@ export class NativeServer extends Server {
 			}
 		})();
 
+		this.logger.log(`&aListenning to connections on port ${this.config.port}`);
+
+		if (this.config.voxelSrvPort > 0) {
+			const wsserver = this.config.VoxelSrvUseWSS
+				? serveTLS({ port: this.config.voxelSrvPort, certFile: this.config.VoxelSrvWssOptions.cert, keyFile: this.config.VoxelSrvWssOptions.key })
+				: serve({ port: this.config.voxelSrvPort });
+
+			(async () => {
+				for await (const req of wsserver) {
+					if (this.isShuttingDown) {
+						return;
+					}
+
+					const { conn, r: bufReader, w: bufWriter, headers } = req;
+					wss
+						.acceptWebSocket({
+							conn,
+							bufReader,
+							bufWriter,
+							headers,
+						})
+						.then((ws) => {
+							const x = new VoxelSrvConnectionHandler(ws);
+							x._connect = (y) => this.connectPlayer(x, 'VoxelSrv', y ?? undefined);
+							x._authenticate(this);
+						})
+						.catch(async (err) => {
+							await req.respond({ status: 400 });
+						});
+				}
+			})();
+
+			this.logger.log(`&aListenning to VoxelSrv connections on port ${this.config.voxelSrvPort}`);
+		}
+
 		(async () => {
 			for await (const _ of Deno.signal(Deno.Signal.SIGINT)) {
 				if (this.isShuttingDown) {
@@ -58,11 +93,11 @@ export class NativeServer extends Server {
 			const buf = new Uint8Array(1024);
 
 			for (;;) {
-				const n = await Deno.stdin.read(buf) ?? 0;
+				const n = (await Deno.stdin.read(buf)) ?? 0;
 				if (this.isShuttingDown) {
 					return;
 				}
-				const command = String.fromCharCode(...buf.slice(0, n));
+				const command = String.fromCharCode(...buf.slice(0, n)).replace('\n', '');
 				buf.fill(0);
 				logger.writeToLog('> ' + command);
 				if (!this.executeCommand(command)) {
@@ -75,48 +110,66 @@ export class NativeServer extends Server {
 			const players: string[] = [];
 			Object.values(this.players).forEach((p) => players.push(p.username));
 
-			if (this.config.publicOnMineOnline) {
-				const obj = {
-					name: this.config.serverName,
-					ip: this.config.address,
-					port: this.config.port,
-					onlinemode: this.config.classicOnlineMode,
-					'verify-names': this.config.classicOnlineMode,
-					md5: '90632803F45C15164587256A08C0ECB4',
-					whitelisted: false,
-					max: this.config.maxPlayerCount,
-					motd: this.config.serverMotd,
-					serverIcon: this._serverIcon,
-					players,
-				};
+			try {
+				if (this.config.publicOnMineOnline) {
+					const obj = {
+						name: this.config.serverName,
+						ip: this.config.address,
+						port: this.config.port,
+						onlinemode: this.config.classicOnlineMode,
+						'verify-names': this.config.classicOnlineMode,
+						md5: '90632803F45C15164587256A08C0ECB4',
+						whitelisted: false,
+						max: this.config.maxPlayerCount,
+						motd: this.config.serverMotd,
+						serverIcon: this._serverIcon,
+						players,
+					};
 
-				fetch('https://mineonline.codie.gg/api/servers', {
-					method: 'POST',
-					body: JSON.stringify(obj),
-					headers: { 'Content-Type': 'application/json' },
-				});
+					fetch('https://mineonline.codie.gg/api/servers', {
+						method: 'POST',
+						body: JSON.stringify(obj),
+						headers: { 'Content-Type': 'application/json' },
+					});
+				}
+
+				if (this.config.useMineOnlineHeartbeat) {
+					fetch(
+						`https://mineonline.codie.gg/heartbeat.jsp?port=${this.config.port}&max=${this.config.maxPlayerCount}&name=${escape(
+							this.config.serverName
+						)}&public=${this.config.publicOnMineOnline ? 'True' : 'False'}&version=7&salt=${this._salt}&users=${players.length}`
+					);
+				}
+			} catch (e) {
+				this.logger.warn(`Couldn't send heartbeat to MineOnline!`);
 			}
 
-			if (this.config.useMineOnlineHeartbeat) {
-				fetch(
-					`https://mineonline.codie.gg/heartbeat.jsp?port=${this.config.port}&max=${this.config.maxPlayerCount}&name=${escape(
-						this.config.serverName
-					)}&public=${this.config.publicOnMineOnline ? 'True' : 'False'}&version=7&salt=${this._salt}&users=${players.length}`
-				);
+			try {
+				if (this.config.publicOnVoxelSrv) {
+					const address = (this.config.VoxelSrvUseWSS ? 'wss://' : 'ws://') + `${this.config.address}:${this.config.voxelSrvPort}`;
+
+					fetch(`https://voxelsrv.pb4.eu/api/addServer?ip=${address}&type=1`);
+				}
+			} catch (e) {
+				this.logger.warn(`Couldn't send heartbeat to VoxelSrv!`);
 			}
 		};
 
 		setTimeout(f, 2000);
 		setInterval(f, 1000 * 60);
-
-		this.logger.log(`&aListenning to connections on port ${this.config.port}`);
 	}
 
 	stopServer() {
 		super.stopServer();
+
+		setTimeout(() => Deno.exit(), 4000);
 	}
 
 	async authenticatePlayer(data: AuthData): Promise<{ auth: AuthData; allow: boolean }> {
+		if (data.authenticated) {
+			return { allow: true, auth: { ...data, username: `#${data.username}` } };
+		}
+
 		if (this.config.classicOnlineMode) {
 			const hash = createHash('md5');
 			hash.update(this._salt + data.username);
@@ -145,7 +198,7 @@ export class NativeServer extends Server {
 		if (this.config.allowOffline || !this.config.classicOnlineMode) {
 			return {
 				auth: {
-					username: data.username,
+					username: this.config.classicOnlineMode ? `*${data.username}` : data.username,
 					uuid: 'offline-' + data.username.toLowerCase(),
 					secret: null,
 					service: 'Unknown',
