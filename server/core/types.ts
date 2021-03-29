@@ -5,11 +5,14 @@ export type XYZ = [number, number, number];
 
 export type Nullable<T> = null | T;
 
-export type Services = 'Unknown' | 'Minecraft' | 'VoxelSrv';
+export type Services = 'Unknown' | 'Minecraft' | 'VoxelSrv' | 'ClassiCube';
+
+export type SubServices = 'MineOnline' | 'Betacraft';
 
 export interface AuthData {
 	username: string;
 	service: Services;
+	subService: Nullable<SubServices>;
 	uuid: Nullable<string>;
 	secret: Nullable<string>;
 	authenticated: boolean;
@@ -33,7 +36,7 @@ export interface CommandContext {
 	checkPermission: (permission: string) => Nullable<boolean>;
 }
 
-export interface Group {
+export interface GroupInterface {
 	name: string;
 	visibleName?: string;
 	prefix?: string;

@@ -4,15 +4,20 @@ import { Server } from '../../core/server.ts';
 import { AuthData, Nullable } from '../../core/types.ts';
 import { wss, voxelsrv } from '../deps.ts';
 import { IAuthRequest, IData } from './voxelsrv/proxy-client.ts';
+import { PacketWriter as MCPacketWriter, PacketReader as MCPacketReader } from './minecraft/packet.ts';
+import { DenoServer } from '../server.ts';
 
 export class TpcConnectionHandler extends ConnectionHandler {
 	_conn: Deno.Conn | null = null;
-	_buffer: Uint8Array;
+	protected _buffer: Uint8Array;
+	protected _callback: (s: ConnectionHandler) => void;
+	protected _isClassic = false;
 
-	constructor(conn: Deno.Conn) {
-		super((<Deno.NetAddr>conn.remoteAddr).hostname, (<Deno.NetAddr>conn.remoteAddr).port);
+	constructor(conn: Deno.Conn, server: Server, callback: (s: ConnectionHandler) => void) {
+		super(server, (<Deno.NetAddr>conn.remoteAddr).hostname, (<Deno.NetAddr>conn.remoteAddr).port);
 
 		this._conn = conn;
+		this._callback = callback;
 		this._buffer = new Uint8Array(4096);
 		this.loop(conn);
 		this.isConnected = true;
@@ -27,10 +32,64 @@ export class TpcConnectionHandler extends ConnectionHandler {
 			const chunks = await this.read(conn);
 			if (chunks === null) break;
 
-			this._clientPackets._decode(chunks);
+			if (this._isClassic) {
+				this._clientPackets._decode(chunks);
+			} else {
+				this.checkIfClassic(chunks);
+			}
 		}
 
 		this.close();
+	}
+
+	protected checkIfClassic(c: Uint8Array) {
+		if (c[0] == 0x00 && c.length == this._clientPackets.packetLenght[0x00]) {
+			this._callback(this);
+			this._isClassic = true;
+			this._clientPackets._decode(c);
+			return;
+		}
+
+		const data = new MCPacketReader(c);
+
+		const id = data.readVarInt();
+
+		if (id == 0) {
+			data.readVarInt(); // Protocol
+			data.readString(); // Address
+			data.readUShort(); // Port
+
+			const state = data.readVarInt();
+
+			if (state == 1) {
+				this._conn?.write(
+					new MCPacketWriter(0x00)
+						.writeString(
+							JSON.stringify({
+								version: {
+									name: 'Classic 0.30',
+									protocol: 7,
+								},
+								description: {
+									text: `${this._server.config.serverName.replaceAll('&', '§')}\n${this._server.config.serverMotd.replaceAll('&', '§')}`,
+								},
+								favicon: (<DenoServer>this._server)._serverIcon,
+							})
+						)
+						.toPacket()
+				);
+			} else {
+				this._conn?.write(
+					new MCPacketWriter(0x00)
+						.writeString(
+							JSON.stringify({
+								text: `You need to use Minecraft Classic 0.30 (or compatible) client!`,
+							})
+						)
+						.toPacket()
+				);
+			}
+		}
 	}
 
 	protected async read(conn: Deno.Conn): Promise<Uint8Array | null> {
@@ -53,7 +112,7 @@ export class TpcConnectionHandler extends ConnectionHandler {
 		}
 
 		try {
-			this._conn.close();
+			this._conn?.close();
 		} finally {
 			this._conn = null;
 			this.disconnect('');
@@ -75,8 +134,8 @@ export class VoxelSrvConnectionHandler extends ConnectionHandler {
 	_motd = '';
 	_ignoredFirstMessage = false;
 
-	constructor(conn: wss.WebSocket) {
-		super((<Deno.NetAddr>conn.conn.remoteAddr).hostname, (<Deno.NetAddr>conn.conn.remoteAddr).port);
+	constructor(conn: wss.WebSocket, server: Server) {
+		super(server, (<Deno.NetAddr>conn.conn.remoteAddr).hostname, (<Deno.NetAddr>conn.conn.remoteAddr).port);
 		this._conn = conn;
 		this.loop(conn);
 		this.isConnected = true;
@@ -102,8 +161,8 @@ export class VoxelSrvConnectionHandler extends ConnectionHandler {
 				<ArrayBuffer>voxelsrv.parseToMessage('proxy-server', 'ProxyInfo', {
 					name: server.config.serverName,
 					proxyProtocol: voxelsrv.proxyVersion,
-					onlinePlayers: 0,
-					maxPlayers: 0,
+					onlinePlayers: Object.keys(server.players).length,
+					maxPlayers: server.config.maxPlayerCount,
 					motd: server.config.serverMotd,
 					software: server.softwareName,
 					auth: server.config.VoxelSrvOnlineMode,
@@ -140,6 +199,7 @@ export class VoxelSrvConnectionHandler extends ConnectionHandler {
 											service: 'VoxelSrv',
 											secret: null,
 											authenticated: true,
+											subService: null,
 										};
 									}
 								}

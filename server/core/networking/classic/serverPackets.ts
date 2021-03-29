@@ -1,6 +1,6 @@
-import { Emitter } from '../../libs/emitter.ts';
-import { Holder } from "../types.ts";
-import { PacketReader, PacketWriter } from './helper.ts';
+import { Emitter } from '../../../libs/emitter.ts';
+import { Holder } from "../../types.ts";
+import { PacketReader, PacketWriter } from './packet.ts';
 
 export class ServerPacketHandler {
 	packetIds = packetIds;

@@ -1,6 +1,6 @@
-import { Emitter } from '../../libs/emitter.ts';
-import { Holder } from "../types.ts";
-import { PacketReader, PacketWriter } from './helper.ts';
+import { Emitter } from '../../../libs/emitter.ts';
+import { Holder } from "../../types.ts";
+import { PacketReader, PacketWriter } from './packet.ts';
 
 export class ClientPacketHandler {
 	packetIds = packetIds;
@@ -72,7 +72,7 @@ export class ClientPacketHandler {
 		packet.writeString(i.key);
 		packet.writeByte(i.modded);
 
-		return packet.buffer;
+		return packet.toPacket();
 	}
 
 	encodeSetBlock(i: SetBlock): Uint8Array {
@@ -84,7 +84,7 @@ export class ClientPacketHandler {
 		packet.writeByte(i.mode);
 		packet.writeByte(i.block);
 
-		return packet.buffer;
+		return packet.toPacket();
 	}
 
 	encodePosition(i: Position): Uint8Array {
@@ -95,7 +95,7 @@ export class ClientPacketHandler {
 		packet.writeShort(i.y);
 		packet.writeShort(i.z);
 
-		return packet.buffer;
+		return packet.toPacket();
 	}
 
 	encodeMessage(i: Message): Uint8Array {
@@ -104,7 +104,7 @@ export class ClientPacketHandler {
 		packet.writeByte(0xFF);
 		packet.writeString(i.message);
 
-		return packet.buffer;
+		return packet.toPacket();
 	}
 }
 

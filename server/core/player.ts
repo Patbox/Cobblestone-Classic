@@ -4,6 +4,8 @@ import { Holder, Nullable, Services } from './types.ts';
 import { World } from './world/world.ts';
 import * as vec from '../libs/vec.ts';
 import { Block, blocks, blocksIdsToName } from './world/blocks.ts';
+import * as event from './events.ts';
+import { EventContext } from '../libs/emitter.ts';
 
 export class Player {
 	readonly username: string;
@@ -107,7 +109,7 @@ export class Player {
 			this.pitch = pitch ?? this.pitch;
 			this.yaw = yaw ?? this.yaw;
 
-			this._connectionHandler.sendTeleport(this, [x, y, z], yaw ?? this.yaw, pitch ?? this.pitch)
+			this._connectionHandler.sendTeleport(this, [x, y, z], yaw ?? this.yaw, pitch ?? this.pitch);
 		}
 	}
 
@@ -116,11 +118,10 @@ export class Player {
 	}
 
 	executeCommand(command: string) {
-		const x = command.split(' ');
 		const result = this._server.event.PlayerCommand._emit({ player: this, command });
 
 		if (result) {
-			const cmd = this._server._commands[x[0]];
+			const cmd = this._server.getCommand(command);
 			if (cmd && (!cmd.permission || this.checkPermission(cmd.permission))) {
 				cmd.execute({
 					server: this._server,
@@ -146,6 +147,14 @@ export class Player {
 		this._connectionHandler.disconnect(reason ?? 'Disconnected!');
 
 		this._server.files.savePlayer(this.uuid, this.getPlayerData());
+	}
+
+	setPermission(permission: string, value: Nullable<boolean>) {
+		if (value == null) {
+			delete this.permissions[permission];
+		} else {
+			this.permissions[permission] = value;
+		}
 	}
 
 	checkPermission(permission: string): Nullable<boolean> {
@@ -183,12 +192,10 @@ export class Player {
 		}
 
 		for (const groupName in this.groups) {
-			const group = this._server.groups[groupName];
+			const x = this._server.groups[groupName]?.checkPermissionExact(permission);
 
-			if (group != null) {
-				if (group.permissions[permission] != null) {
-					return !!group.permissions[permission];
-				}
+			if (x != null) {
+				return x;
 			}
 		}
 
@@ -287,7 +294,7 @@ export class Player {
 		if (message.startsWith('/')) {
 			const result = this.executeCommand(message.slice(1));
 			if (!result) {
-				this.sendMessage(this._server.getMessage('nocommand', {}));
+				this.sendMessage(this._server.getMessage('noCommand', {}));
 			}
 		} else {
 			const result = this._server.event.PlayerMessage._emit({ player: this, message: message });
@@ -335,4 +342,146 @@ export interface PlayerData {
 	yaw: number;
 	ip: string;
 	displayName: Nullable<string>;
+}
+
+export class VirtualPlayerHolder {
+	readonly _server: Server;
+	readonly uuid: string;
+
+	protected player: Nullable<Player>;
+	protected playerData: PlayerData;
+
+	protected joinEvent: (ev: EventContext<event.PlayerConnect>) => void;
+	protected leaveEvent: (ev: EventContext<event.PlayerDisconnect>) => void;
+
+	constructor(uuid: string, server: Server) {
+		this.uuid = uuid;
+		this._server = server;
+
+		this.player = server.players[uuid] ?? null;
+		this.playerData = this.player?.getPlayerData() ?? server.files.getPlayer(uuid);
+
+		if (!this.playerData) {
+			throw 'No player!';
+		}
+
+		this.joinEvent = (ev: EventContext<event.PlayerConnect>) => {
+			if (ev.value.player.uuid == uuid) {
+				this.player = ev.value.player;
+				this.player.groups = this.playerData.groups;
+				this.player.permissions = this.playerData.permissions;
+				this.player.displayName = this.playerData.displayName;
+			}
+		};
+
+		this.leaveEvent = (ev: EventContext<event.PlayerDisconnect>) => {
+			if (ev.value.player.uuid == uuid) {
+				this.player = null;
+				this.playerData = ev.value.player.getPlayerData();
+			}
+		};
+
+		this._server.event.PlayerConnect.on(this.joinEvent);
+		this._server.event.PlayerDisconnect.on(this.leaveEvent);
+	}
+
+	finish() {
+		if (!this.player && this.playerData) {
+			this._server.files.savePlayer(this.uuid, this.playerData);
+			this.player = null;
+
+			this._server.event.PlayerConnect.remove(this.joinEvent);
+			this._server.event.PlayerDisconnect.remove(this.leaveEvent);
+		}
+	}
+
+	setPermission(permission: string, value: Nullable<boolean>) {
+		const perms: Holder<Nullable<boolean>> = this.player?.permissions ?? this.playerData.permissions;
+
+		if (value == null) {
+			delete perms[permission];
+		} else {
+			perms[permission] = value;
+		}
+	}
+
+	checkPermission(permission: string): Nullable<boolean> {
+		{
+			const check = this.checkPermissionExact(permission);
+			if (check != null) {
+				return check;
+			}
+		}
+		{
+			const check = this.checkPermissionExact('*');
+			if (check != null) {
+				return check;
+			}
+		}
+
+		const splited = permission.split('.');
+		let perm = '';
+
+		for (let x = 0; x < splited.length; x++) {
+			perm += splited[x] + '.';
+
+			const check = this.checkPermissionExact(perm + '*');
+			if (check != null) {
+				return check;
+			}
+		}
+
+		return null;
+	}
+
+	checkPermissionExact(permission: string): Nullable<boolean> {
+		const perms: Holder<Nullable<boolean>> = this.player?.permissions ?? this.playerData.permissions;
+		const groups: string[] = this.player?.groups ?? this.playerData.groups;
+
+		if (perms[permission] != null) {
+			return !!perms[permission];
+		}
+
+		for (const groupName in groups) {
+			const group = this._server.groups[groupName];
+
+			if (group != null) {
+				if (group.permissions[permission] != null) {
+					return !!group.permissions[permission];
+				}
+			}
+		}
+
+		return null;
+	}
+
+	addGroup(group: string) {
+		this.player ? arrayAddOnce(this.player.groups, group) : arrayAddOnce(this.playerData.groups, group);
+	}
+
+	removeGroup(group: string) {
+		this.player ? arrayRemove(this.player.groups, group) : arrayRemove(this.playerData.groups, group);
+	}
+
+	getDisplayName() {
+		return this.player?.displayName ?? this.playerData.displayName;
+	}
+
+	setDisplayName() {
+		this.player ? this.player.displayName : this.playerData.displayName;
+	}
+
+	getName() {
+		return this.player?.username ?? this.playerData.username;
+	}
+}
+
+function arrayAddOnce(a: unknown[], b: unknown) {
+	!a.includes(b) ? a.push(b) : null;
+}
+
+function arrayRemove(a: unknown[], b: unknown) {
+	const x = a.indexOf(b);
+
+	x > -1 ? a.splice(x) : null;
 }

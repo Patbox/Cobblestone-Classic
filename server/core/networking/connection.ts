@@ -1,6 +1,6 @@
 import { World } from '../world/world.ts';
-import { ClientPacketHandler } from './clientPackets.ts';
-import { ServerPacketHandler } from './serverPackets.ts';
+import { ClientPacketHandler } from './classic/clientPackets.ts';
+import { ServerPacketHandler } from './classic/serverPackets.ts';
 import { gzip } from '../deps.ts';
 import { Nullable, XYZ } from '../types.ts';
 import { Player } from '../player.ts';
@@ -12,7 +12,7 @@ export class ConnectionHandler {
 	readonly _clientPackets: ClientPacketHandler;
 	readonly _serverPackets = serverPackets;
 	_player: Nullable<Player> = null;
-	_server: Nullable<Server> = null;
+	_server: Server;
 
 	isConnected = false;
 	sendingWorld = false;
@@ -22,8 +22,9 @@ export class ConnectionHandler {
 
 	blockUpdates: Uint8Array[] = [];
 
-	constructor(ip: string, port: number) {
+	constructor(server: Server, ip: string, port: number) {
 		this._clientPackets = new ClientPacketHandler();
+		this._server = server;
 		this.ip = ip;
 		this.port = port;
 	}
@@ -50,10 +51,11 @@ export class ConnectionHandler {
 	async _send(packet: Uint8Array) {}
 
 	sendServerInfo(server: Server) {
+		this._server = server;
 		this._send(
 			serverPackets.encodeServerIdentification({
-				name: server.config.serverName,
-				motd: server.config.serverMotd,
+				name: this._server.config.serverName,
+				motd: this._server.config.serverMotd,
 				protocol: 7,
 				userType: 0,
 			})
@@ -84,6 +86,8 @@ export class ConnectionHandler {
 		await this._send(serverPackets.encodeLevelFinalize({ x: world.size[0], y: world.size[1], z: world.size[2] }));
 		this.sendingWorld = false;
 		world.players.forEach((p) => this.sendSpawnPlayer(p));
+
+		this._player ? this.sendSpawnPlayer(this._player) : null;
 	}
 
 	setBlock(x: number, y: number, z: number, block: number): void {

@@ -3,7 +3,7 @@ import { Player, PlayerData } from './player.ts';
 import { World, WorldData, WorldGenerator } from './world/world.ts';
 
 import * as event from './events.ts';
-import { AuthData, Holder, Command, Group, Plugin, Nullable, XYZ } from './types.ts';
+import { AuthData, Holder, Command, GroupInterface, Plugin, Nullable, XYZ } from './types.ts';
 import { ConnectionHandler } from './networking/connection.ts';
 import { setupGenerators } from './world/generators.ts';
 import { semver } from './deps.ts';
@@ -12,9 +12,9 @@ import { setupCommands } from './commands.ts';
 
 export class Server {
 	readonly softwareName = 'Cobblestone';
-	readonly softwareVersion = '0.0.3';
-	readonly _apiVersion = '0.0.3';
-	readonly _minimalApiVersion = '0.0.3';
+	readonly softwareVersion = '0.0.4';
+	readonly _apiVersion = '0.0.4';
+	readonly _minimalApiVersion = '0.0.4';
 
 	readonly files: IFileHelper;
 	readonly logger: ILogger;
@@ -36,9 +36,10 @@ export class Server {
 
 	readonly worlds: Holder<World> = {};
 	readonly players: Holder<Player> = {};
-	readonly _generators: Holder<WorldGenerator> = {};
-	readonly _commands: Holder<Command> = {};
-	readonly _plugins: Holder<Plugin> = {};
+	protected readonly _generators: Holder<WorldGenerator> = {};
+	protected readonly _commands: Holder<Command> = {};
+	protected readonly _plugins: Holder<Plugin> = {};
+	protected readonly _playerUUIDCache: Holder<string>;
 	readonly blocks = blocks;
 	readonly blockIds = blockIds;
 	readonly blockIdsToNames = blocksIdsToName;
@@ -49,10 +50,10 @@ export class Server {
 
 	config: IConfig;
 
-	_takenPlayerIds: number[] = [];
+	readonly _takenPlayerIds: number[] = [];
 
-	_autoSaveInterval = -1;
-	_autoBackupInterval = -1;
+	protected _autoSaveInterval = -1;
+	protected _autoBackupInterval = -1;
 
 	_loaded = false;
 
@@ -75,9 +76,18 @@ export class Server {
 		}
 
 		if (files.existConfig('groups')) {
-			this.groups = { ...(<Holder<Group>>files.getConfig('groups')) };
+			const temp = <Holder<GroupInterface>>files.getConfig('groups');
+			for (const x in temp) {
+				this.groups[x] = new Group(temp[x]);
+			}
 		} else {
-			this.groups['default'] = { name: 'default', permissions: {} };
+			this.groups['default'] = new Group({ name: 'default', permissions: {} });
+		}
+
+		if (files.existConfig('.uuidcache')) {
+			this._playerUUIDCache = { ...(<Holder<string>>files.getConfig('.uuidcache')) };
+		} else {
+			this._playerUUIDCache = {};
 		}
 
 		files.saveConfig('config', this.config);
@@ -106,13 +116,13 @@ export class Server {
 			}, 1000 * 60 * this.config.backupInterval);
 		}
 
-		setupCommands(this);
+		setupCommands(this, this._commands);
 
 		try {
-			this.startLoadingPlugins(() => {
+			this._startLoadingPlugins(() => {
 				this.event.ServerCommandRegistration._emit(this);
 				try {
-					this.startListening();
+					this._startListening();
 				} catch (e) {
 					this.logger.error(e);
 					this.stopServer();
@@ -131,13 +141,15 @@ export class Server {
 		}
 	}
 
-	startListening() {}
+	// Needs to be implemented by extended class
+	protected _startListening() {}
 
 	stopServer() {
 		this.isShuttingDown = true;
 		this.logger.log('&6Closing server...');
 		this.files.saveConfig('config', this.config);
 		this.files.saveConfig('groups', this.groups);
+		this.files.saveConfig('.uuidcache', this._playerUUIDCache);
 		this.event.ServerShutdown._emit(this);
 
 		Object.values(this.players).forEach((player) => {
@@ -162,13 +174,15 @@ export class Server {
 					service: overrides?.service ?? 'Minecraft',
 					secret: overrides?.secret ?? playerInfo.key,
 					authenticated: overrides?.authenticated ?? false,
+					subService: overrides?.subService ?? null,
 				});
 
 				if (result.allow) {
+					const subService = result.auth.subService ? `/${result.auth.subService}` : '';
 					this.logger.conn(
 						result.auth.service == 'Unknown'
 							? `User ${result.auth.username} (${result.auth.uuid}) doesn't use any auth...`
-							: `User ${result.auth.username} (${result.auth.uuid}) is logged with ${result.auth.service} auth!`
+							: `User ${result.auth.username} (${result.auth.uuid}) is logged with ${result.auth.service}${subService} auth!`
 					);
 
 					const player = new Player(
@@ -181,6 +195,7 @@ export class Server {
 						this
 					);
 					this.players[player.uuid] = player;
+					this._playerUUIDCache[player.username.toLowerCase()] = player.uuid;
 
 					player.changeWorld(player.world);
 					this.sendChatMessage(this.getMessage('join', { player: player.getDisplayName() }), player);
@@ -199,9 +214,9 @@ export class Server {
 	}
 
 	executeCommand(command: string): boolean {
-		const x = command.split(' ');
-		if (this._commands[x[0]] != undefined) {
-			this._commands[x[0]].execute({ server: this, player: null, command, send: this.logger.log, checkPermission: (x) => true });
+		const cmd = this.getCommand(command);
+		if (cmd != undefined) {
+			cmd.execute({ server: this, player: null, command, send: this.logger.log, checkPermission: (x) => true });
 			return true;
 		}
 		return false;
@@ -332,7 +347,7 @@ export class Server {
 		}
 	}
 
-	startLoadingPlugins(cb: () => void) {
+	protected _startLoadingPlugins(cb: () => void) {
 		cb();
 	}
 
@@ -350,7 +365,9 @@ export class Server {
 	}
 
 	getCommand(command: string): Nullable<Command> {
-		return this._commands[command] ?? null;
+		const x = command.split(' ');
+
+		return this._commands[x[0]] ?? null;
 	}
 
 	addGenerator(gen: WorldGenerator): boolean {
@@ -377,7 +394,7 @@ export class Server {
 	}
 
 	getPlayerIdFromName(username: string): Nullable<string> {
-		return null;
+		return this._playerUUIDCache[username.toLowerCase()] ?? null;
 	}
 
 	static formatDate(date: number | Date, showTime = true): string {
@@ -392,6 +409,71 @@ export class Server {
 	}
 
 	formatDate = Server.formatDate;
+}
+
+export class Group implements GroupInterface {
+	name: string;
+	visibleName?: string;
+	prefix?: string;
+	sufix?: string;
+	permissions: { [i: string]: Nullable<boolean> };
+
+	constructor(data: GroupInterface) {
+		this.name = data.name;
+		this.visibleName = data.visibleName;
+		this.prefix = data.prefix;
+		this.sufix = data.sufix;
+		this.permissions = data.permissions;
+	}
+
+	getName() {
+		return this.visibleName ?? this.name;
+	}
+
+	setPermission(permission: string, value: Nullable<boolean>) {
+		if (value == null) {
+			delete this.permissions[permission];
+		} else {
+			this.permissions[permission] = value;
+		}
+	}
+
+	checkPermission(permission: string): Nullable<boolean> {
+		{
+			const check = this.checkPermissionExact(permission);
+			if (check != null) {
+				return check;
+			}
+		}
+		{
+			const check = this.checkPermissionExact('*');
+			if (check != null) {
+				return check;
+			}
+		}
+
+		const splited = permission.split('.');
+		let perm = '';
+
+		for (let x = 0; x < splited.length; x++) {
+			perm += splited[x] + '.';
+
+			const check = this.checkPermissionExact(perm + '*');
+			if (check != null) {
+				return check;
+			}
+		}
+
+		return null;
+	}
+
+	checkPermissionExact(permission: string): Nullable<boolean> {
+		if (this.permissions[permission] != null) {
+			return !!this.permissions[permission];
+		}
+
+		return null;
+	}
 }
 
 function addZero(n: number): string {
@@ -440,17 +522,20 @@ export interface IConfig {
 
 	defaultWorldName: string;
 
-	useMineOnlineHeartbeat: boolean;
 	classicOnlineMode: boolean;
+	useMineOnlineHeartbeat: boolean;
 	publicOnMineOnline: boolean;
+
+	useBetaCraftHeartbeat: boolean;
+	publicOnBetaCraft: boolean;
 
 	VoxelSrvOnlineMode: boolean;
 	publicOnVoxelSrv: boolean;
+
 	allowOffline: boolean;
 
 	VoxelSrvUseWSS: boolean;
-	VoxelSrvWssOptions: { key: string, cert: string },
-
+	VoxelSrvWssOptions: { key: string; cert: string };
 
 	messages: {
 		join: string;
@@ -480,9 +565,13 @@ const defaultConfig: IConfig = {
 
 	defaultWorldName: 'main',
 
-	useMineOnlineHeartbeat: false,
 	classicOnlineMode: false,
+
+	useMineOnlineHeartbeat: false,
 	publicOnMineOnline: false,
+
+	useBetaCraftHeartbeat: false,
+	publicOnBetaCraft: false,
 
 	VoxelSrvOnlineMode: false,
 	publicOnVoxelSrv: false,

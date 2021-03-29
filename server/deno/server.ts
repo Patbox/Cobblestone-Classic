@@ -1,25 +1,33 @@
-import { TpcConnectionHandler, VoxelSrvConnectionHandler } from '../native/networking/connection.ts';
+import { TpcConnectionHandler, VoxelSrvConnectionHandler } from './networking/connection.ts';
 import { PlayerData } from '../core/player.ts';
 import { IFileHelper, ILogger, Server } from '../core/server.ts';
 import { World } from '../core/world/world.ts';
 import { fs, createHash, wss, serve, serveTLS } from './deps.ts';
 import { gzip, ungzip, uuid } from '../core/deps.ts';
-import { AuthData } from '../core/types.ts';
+import { AuthData, Nullable, SubServices } from '../core/types.ts';
 
 const textEncoder = new TextEncoder();
 
-export class NativeServer extends Server {
-	_salt: string;
+export class DenoServer extends Server {
+	protected _saltMineOnline: string;
+	protected _saltBetaCraft: string;
 	_serverIcon: string | undefined;
 
 	constructor() {
 		super(fileHelper, logger);
-		const hash = createHash('md5');
-		hash.update(<string>uuid.v4());
-		this._salt = hash.toString();
+		{
+			const hash = createHash('md5');
+			hash.update(<string>uuid.v4());
+			this._saltMineOnline = hash.toString();
+		}
+		{
+			const hash = createHash('md5');
+			hash.update(<string>uuid.v4());
+			this._saltBetaCraft = hash.toString();
+		}
 	}
 
-	startListening() {
+	protected _startListening() {
 		try {
 			if (fs.existsSync('./config/server-icon.png')) {
 				const file = Deno.readFileSync('./config/server-icon.png');
@@ -37,8 +45,9 @@ export class NativeServer extends Server {
 				if (this.isShuttingDown) {
 					return;
 				}
-				const x = new TpcConnectionHandler(conn);
-				this.connectPlayer(x);
+				new TpcConnectionHandler(conn, this, (s) => {
+					this.connectPlayer(s);
+				});
 			}
 		})();
 
@@ -64,7 +73,7 @@ export class NativeServer extends Server {
 							headers,
 						})
 						.then((ws) => {
-							const x = new VoxelSrvConnectionHandler(ws);
+							const x = new VoxelSrvConnectionHandler(ws, this);
 							x._connect = (y) => this.connectPlayer(x, 'VoxelSrv', y ?? undefined);
 							x._authenticate(this);
 						})
@@ -137,11 +146,23 @@ export class NativeServer extends Server {
 					fetch(
 						`https://mineonline.codie.gg/heartbeat.jsp?port=${this.config.port}&max=${this.config.maxPlayerCount}&name=${escape(
 							this.config.serverName
-						)}&public=${this.config.publicOnMineOnline ? 'True' : 'False'}&version=7&salt=${this._salt}&users=${players.length}`
+						)}&public=${this.config.publicOnMineOnline ? 'True' : 'False'}&version=7&salt=${this._saltMineOnline}&users=${players.length}`
 					);
 				}
 			} catch (e) {
 				this.logger.warn(`Couldn't send heartbeat to MineOnline!`);
+			}
+
+			try {
+				if (this.config.useBetaCraftHeartbeat) {
+					fetch(
+						`https://betacraft.pl/heartbeat.jsp?port=${this.config.port}&max=${this.config.maxPlayerCount}&name=${escape(
+							this.config.serverName
+						)}&public=${this.config.publicOnBetaCraft ? 'True' : 'False'}&version=7&salt=${this._saltBetaCraft}&users=${players.length}`
+					);
+				}
+			} catch (e) {
+				this.logger.warn(`Couldn't send heartbeat to BetaCraft!`);
 			}
 
 			try {
@@ -171,11 +192,21 @@ export class NativeServer extends Server {
 		}
 
 		if (this.config.classicOnlineMode) {
+			let subService: Nullable<SubServices> = null;
 			const hash = createHash('md5');
-			hash.update(this._salt + data.username);
-			const hashInHex = hash.toString();
+			hash.update(this._saltMineOnline + data.username);
 
-			if (hashInHex == data.secret) {
+			if (hash.toString() == data.secret) {
+				subService = 'MineOnline';
+			} else {
+				const hash = createHash('md5');
+				hash.update(this._saltBetaCraft + data.username);
+				if (hash.toString() == data.secret) {
+					subService = 'Betacraft';
+				}
+			}
+
+			if (subService != null) {
 				const moj: { id: string; name: string; error?: string } = await (
 					await fetch('https://api.mojang.com/users/profiles/minecraft/' + data.username)
 				).json();
@@ -189,6 +220,7 @@ export class NativeServer extends Server {
 							service: 'Minecraft',
 							secret: null,
 							authenticated: true,
+							subService: subService,
 						},
 					};
 				}
@@ -203,6 +235,7 @@ export class NativeServer extends Server {
 					secret: null,
 					service: 'Unknown',
 					authenticated: true,
+					subService: null,
 				},
 				allow: true,
 			};
@@ -210,7 +243,7 @@ export class NativeServer extends Server {
 		return { auth: data, allow: false };
 	}
 
-	async startLoadingPlugins(cb: () => void) {
+	protected async _startLoadingPlugins(cb: () => void) {
 		if (this._loaded) return;
 		for (const dirEntry of Deno.readDirSync('./plugins/')) {
 			if (dirEntry.isFile && (dirEntry.name.endsWith('.ts') || dirEntry.name.endsWith('.ts'))) {
