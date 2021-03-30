@@ -1,1 +1,1 @@
-deno run --allow-net --allow-read --allow-write --unstable server/deno.ts
+deno run --allow-net --allow-read --allow-write --allow-env --no-check --unstable server/deno.ts "$@"

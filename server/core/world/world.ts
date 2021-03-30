@@ -25,6 +25,7 @@ export class World {
 	readonly createdBy: {
 		service: Services;
 		username: string;
+		uuid: string;
 	};
 
 	readonly generator: {
@@ -57,7 +58,7 @@ export class World {
 
 		this.timeCreated = data.timeCreated ?? BigInt(Date.now());
 		this.generator = data.generator;
-		this.createdBy = data.createdBy ?? { service: 'Unknown', username: server.softwareName };
+		this.createdBy = data.createdBy ?? { service: 'Unknown', username: server.softwareName, uuid: 'unknown' };
 
 		this.lastModified = data.lastModified ?? BigInt(Date.now());
 
@@ -143,6 +144,7 @@ export class World {
 			CreatedBy: {
 				Service: this.createdBy.service,
 				Username: this.createdBy.username,
+				UUID: this.createdBy.uuid,
 			},
 			MapGenerator: {
 				Software: this.generator.software,
@@ -162,7 +164,7 @@ export class World {
 			const blocks2 = <Uint8Array | undefined>main.BlockArray2;
 
 			const spawn = <{ [i: string]: { value: number } }>main.Spawn;
-			const createdBy = <{ Service?: Services; Username: string }>main.CreatedBy;
+			const createdBy = <{ Service?: Services; Username?: string; UUID?: string }>main.CreatedBy;
 			const generator = <{ Software?: string; MapGeneratorName: string }>main.MapGenerator;
 
 			const blockData = new Uint8Array(4 + blocks.length);
@@ -200,6 +202,7 @@ export class World {
 				createdBy: {
 					service: createdBy?.Service ?? 'Unknown',
 					username: createdBy?.Username ?? 'Unknown',
+					uuid: createdBy?.UUID ?? 'Unknown',
 				},
 				timeCreated: <bigint>main?.TimeCreated ?? Date.now(),
 				lastModified: <bigint>main?.LastModified ?? Date.now(),
@@ -229,6 +232,7 @@ export interface WorldData {
 	createdBy?: {
 		service: Services;
 		username: string;
+		uuid: string;
 	};
 
 	generator: {

@@ -79,6 +79,11 @@ export class Player {
 		connection.setPlayer(this);
 	}
 
+	/**
+	 * Changes player's world to provided one;
+	 * 
+	 * @param world World instacne
+	 */
 	async changeWorld(world: World) {
 		const result = this._server.event.PlayerChangeWorld._emit({ player: this, from: this.world, to: world });
 
@@ -96,6 +101,16 @@ export class Player {
 		}
 	}
 
+	/**
+	 * Telepors player to provided location
+	 * 
+	 * @param world World instance
+	 * @param x X position
+	 * @param y Y position
+	 * @param z Z position
+	 * @param yaw Player's yaw (optional)
+	 * @param pitch Player's pitch (optional)
+	 */
 	async teleport(world: World, x: number, y: number, z: number, yaw?: number, pitch?: number) {
 		const result = this._server.event.PlayerTeleport._emit({ player: this, position: [x, y, z], world, yaw, pitch });
 
@@ -113,10 +128,22 @@ export class Player {
 		}
 	}
 
+	/**
+	 * Sends message to player
+	 * 
+	 * @param message Formatted message
+	 * @param player Player sending it (optional)
+	 */
 	sendMessage(message: string, player?: Player) {
 		this._connectionHandler.sendMessage(player ?? null, message);
 	}
 
+	/**
+	 * Executes command as player
+	 * 
+	 * @param command command without /
+	 * @returns Boolean indicating, if executing was successful
+	 */
 	executeCommand(command: string) {
 		const result = this._server.event.PlayerCommand._emit({ player: this, command });
 
@@ -138,6 +165,11 @@ export class Player {
 		return true;
 	}
 
+	/**
+	 * Disconnects player
+	 * 
+	 * @param reason Reason why player was disconnected (optional)
+	 */
 	disconnect(reason?: string) {
 		this._removeFromServer();
 
@@ -149,6 +181,12 @@ export class Player {
 		this._server.files.savePlayer(this.uuid, this.getPlayerData());
 	}
 
+	/**
+	 * Sets player's permission
+	 * 
+	 * @param permission Permission
+	 * @param value Boolean for setting, null for deletion
+	 */
 	setPermission(permission: string, value: Nullable<boolean>) {
 		if (value == null) {
 			delete this.permissions[permission];
@@ -157,6 +195,12 @@ export class Player {
 		}
 	}
 
+	/**
+	 * Checks if player has permission
+	 * 
+	 * @param permission Permission
+	 * @param value Boolean if it's set, null if it isn't (aka default)
+	 */
 	checkPermission(permission: string): Nullable<boolean> {
 		{
 			const check = this.checkPermissionExact(permission);
@@ -186,6 +230,12 @@ export class Player {
 		return null;
 	}
 
+	/**
+	 * Checks if player has permission, excluding wildcart ones
+	 * 
+	 * @param permission Permission
+	 * @param value Boolean if it's set, null if it isn't (aka default)
+	 */
 	checkPermissionExact(permission: string): Nullable<boolean> {
 		if (this.permissions[permission] != null) {
 			return !!this.permissions[permission];
@@ -202,6 +252,11 @@ export class Player {
 		return null;
 	}
 
+	/** 
+	 * Do not use unless you know what are you doing
+	 * 
+	 * Removes player for server
+	 */
 	_removeFromServer() {
 		this.isInWorld = false;
 		this.isConnected = false;
@@ -210,6 +265,11 @@ export class Player {
 		this._server._takenPlayerIds.splice(this._server._takenPlayerIds.indexOf(this.numId));
 	}
 
+	/**
+	 * Returns player's data (same format as for saves)
+	 * 
+	 * @returns PlayerData
+	 */
 	getPlayerData(): PlayerData {
 		return {
 			position: this.position,
@@ -225,10 +285,18 @@ export class Player {
 		};
 	}
 
+	/**
+	 * Returns player's display name
+	 * 
+	 * @returns Display name
+	 */
 	getDisplayName(): string {
 		return this.displayName ?? this.username;
 	}
 
+	/** 
+	 * Do not use unless you know what are you doing
+	 */
 	_action_move(x: number, y: number, z: number, yaw: number, pitch: number) {
 		if (vec.equals([x, y, z], this.position)) {
 			return;
@@ -260,6 +328,9 @@ export class Player {
 		}
 	}
 
+	/** 
+	 * Do not use unless you know what are you doing
+	 */
 	_action_block_place(x: number, y: number, z: number, block: number) {
 		if (!this.world.isInBounds(x, y, z) || !(<Holder<Block>>blocks)[blocksIdsToName[block]].placeable) {
 			this._connectionHandler.setBlock(x, y, z, this.world.getBlock(x, y, z));
@@ -275,6 +346,9 @@ export class Player {
 		}
 	}
 
+	/** 
+	 * Do not use unless you know what are you doing
+	 */
 	_action_block_break(x: number, y: number, z: number, block: number) {
 		if (!this.world.isInBounds(x, y, z) || !(<Holder<Block>>blocks)[blocksIdsToName[block]].placeable) {
 			this._connectionHandler.setBlock(x, y, z, this.world.getBlock(x, y, z));
@@ -290,6 +364,9 @@ export class Player {
 		}
 	}
 
+	/** 
+	 * Do not use unless you know what are you doing
+	 */
 	_action_chat_message(message: string) {
 		if (message.startsWith('/')) {
 			const result = this.executeCommand(message.slice(1));
@@ -305,6 +382,12 @@ export class Player {
 		}
 	}
 
+	/**
+	 * Allows to check if player colides with other player
+	 * 
+	 * @param player Other player
+	 * @returns Boolean indicating, if player colides
+	 */
 	checkColision(player: Player): boolean {
 		if (this.world != player.world || vec.dist(this.position, player.position) > 3) {
 			return false;
@@ -313,6 +396,10 @@ export class Player {
 		return this._checkColision(player);
 	}
 
+	/** 
+	 * Do not use unless you know what are you doing
+	 * Use `Player.checkColision` instead
+	 */
 	_checkColision(player: Player): boolean {
 		const selfMax = vec.add(this.position, [0.4, 1.8, 0.4]);
 		const selfMin = vec.add(this.position, [-0.4, 0, -0.4]);
@@ -344,6 +431,11 @@ export interface PlayerData {
 	displayName: Nullable<string>;
 }
 
+
+/**
+ * VirtualPlayerHolder allows to modify some of player data while player is offline
+ * It still works for online players
+ */
 export class VirtualPlayerHolder {
 	readonly _server: Server;
 	readonly uuid: string;
@@ -385,6 +477,10 @@ export class VirtualPlayerHolder {
 		this._server.event.PlayerDisconnect.on(this.leaveEvent);
 	}
 
+
+	/**
+	 * Saves all changes
+	 */
 	finish() {
 		if (!this.player && this.playerData) {
 			this._server.files.savePlayer(this.uuid, this.playerData);
@@ -395,6 +491,12 @@ export class VirtualPlayerHolder {
 		}
 	}
 
+	/**
+	 * Sets player's permission
+	 * 
+	 * @param permission Permission
+	 * @param value Boolean for setting, null for deletion
+	 */
 	setPermission(permission: string, value: Nullable<boolean>) {
 		const perms: Holder<Nullable<boolean>> = this.player?.permissions ?? this.playerData.permissions;
 
@@ -405,6 +507,12 @@ export class VirtualPlayerHolder {
 		}
 	}
 
+	/**
+	 * Sets player's permission
+	 * 
+	 * @param permission Permission
+	 * @param value Boolean for setting, null for deletion
+	 */
 	checkPermission(permission: string): Nullable<boolean> {
 		{
 			const check = this.checkPermissionExact(permission);
@@ -434,6 +542,12 @@ export class VirtualPlayerHolder {
 		return null;
 	}
 
+	/**
+	 * Checks if player has permission, excluding wildcart ones
+	 * 
+	 * @param permission Permission
+	 * @param value Boolean if it's set, null if it isn't (aka default)
+	 */
 	checkPermissionExact(permission: string): Nullable<boolean> {
 		const perms: Holder<Nullable<boolean>> = this.player?.permissions ?? this.playerData.permissions;
 		const groups: string[] = this.player?.groups ?? this.playerData.groups;
@@ -455,22 +569,41 @@ export class VirtualPlayerHolder {
 		return null;
 	}
 
+	/**
+	 * Adds player to group
+	 * 
+	 * @param group 
+	 */
 	addGroup(group: string) {
 		this.player ? arrayAddOnce(this.player.groups, group) : arrayAddOnce(this.playerData.groups, group);
 	}
 
+	/**
+	 * Removes player from group
+	 * 
+	 * @param group 
+	 */
 	removeGroup(group: string) {
 		this.player ? arrayRemove(this.player.groups, group) : arrayRemove(this.playerData.groups, group);
 	}
 
+	/**
+	 * Gets Player's display name
+	 */
 	getDisplayName() {
 		return this.player?.displayName ?? this.playerData.displayName;
 	}
 
-	setDisplayName() {
-		this.player ? this.player.displayName : this.playerData.displayName;
+	/**
+	 * Sets Player's display name
+	 */
+	setDisplayName(name: string) {
+		this.player ? this.player.displayName = name : this.playerData.displayName = name;
 	}
 
+	/**
+	 * Returns player's display name (for chat)
+	 */
 	getName() {
 		return this.player?.username ?? this.playerData.username;
 	}

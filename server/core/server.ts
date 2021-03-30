@@ -11,13 +11,40 @@ import { blocks, blockIds, blocksIdsToName } from './world/blocks.ts';
 import { setupCommands } from './commands.ts';
 
 export class Server {
-	readonly softwareName = 'Cobblestone';
-	readonly softwareVersion = '0.0.4';
-	readonly _apiVersion = '0.0.4';
-	readonly _minimalApiVersion = '0.0.4';
+	// Main informations about server
+	static readonly softwareName = 'Cobblestone';
+	static readonly softwareVersion = '0.0.5';
+	static readonly targetGame = 'Minecraft Classic';
+	static readonly targetVersion = '0.30c';
 
+	// Copy some of it to class instances
+	readonly softwareName = Server.softwareName;
+	readonly softwareVersion = Server.softwareVersion;
+
+	// Version of API, goes up when new methods are added
+	readonly _apiVersion = '0.0.5';
+
+	// Minimal compatible API
+	readonly _minimalApiVersion = '0.0.5';
+
+	/**
+	 * Wrapper to access filesystem. Used mostly to abstract stuff
+	 */
 	readonly files: IFileHelper;
+
+	/**
+	 * Logger with full color code support
+	 */
 	readonly logger: ILogger;
+
+	/**
+	 * Checks if devMode is on
+	 */
+	readonly devMode: boolean;
+
+	/**
+	 * All main server, player and world events
+	 */
 	readonly event = {
 		PlayerConnect: new Emitter<event.PlayerConnect>(true),
 		PlayerDisconnect: new Emitter<event.PlayerDisconnect>(true),
@@ -39,7 +66,8 @@ export class Server {
 	protected readonly _generators: Holder<WorldGenerator> = {};
 	protected readonly _commands: Holder<Command> = {};
 	protected readonly _plugins: Holder<Plugin> = {};
-	protected readonly _playerUUIDCache: Holder<string>;
+	protected _playerUUIDCache: Holder<string> = {};
+
 	readonly blocks = blocks;
 	readonly blockIds = blockIds;
 	readonly blockIdsToNames = blocksIdsToName;
@@ -48,7 +76,7 @@ export class Server {
 
 	readonly classicTextRegex = /[^ -~]/gi;
 
-	config: IConfig;
+	config: IConfig = defaultConfig;
 
 	readonly _takenPlayerIds: number[] = [];
 
@@ -57,43 +85,62 @@ export class Server {
 
 	_loaded = false;
 
+	isRunning = false;
 	isShuttingDown = false;
 
-	constructor(files: IFileHelper, logger: ILogger) {
-		files.createBaseDirectories();
-
-		logger.log(`&aStarting ${this.softwareName} ${this.softwareVersion} server...`);
-
+	constructor(files: IFileHelper, logger: ILogger, devMode = false) {
 		this.files = files;
+		logger.showDebug = devMode;
 		this.logger = logger;
+		this.devMode = devMode;
+	}
 
-		if (files.existConfig('config')) {
-			const tmp = <IConfig>files.getConfig('config');
-			this.config = { ...defaultConfig, ...tmp };
-			(<Holder<string>>this.config.messages) = { ...defaultConfig.messages, ...(tmp.messages ?? {}) };
-		} else {
-			this.config = { ...defaultConfig };
+	/**
+	 * Starts a server, DON'T run it from plugins, it will throw an error
+	 */
+	async _startServer() {
+		if (this.isRunning) {
+			throw new Error("You can't start server twice!");
 		}
 
-		if (files.existConfig('groups')) {
-			const temp = <Holder<GroupInterface>>files.getConfig('groups');
+		this.logger.log(`&aStarting ${this.softwareName} ${this.softwareVersion} server...`);
+		this.logger.debug(`&cDev mode is active! If you are running public server, you should start it normally (with run.bat/sh) instead!`);
+
+		const d = Date.now();
+
+		if (this.files.existConfig('config')) {
+			const tmp = <IConfig>this.files.getConfig('config');
+			this.config = { ...defaultConfig, ...tmp };
+			(<Holder<string>>this.config.messages) = { ...defaultConfig.messages, ...(tmp.messages ?? {}) };
+			this.logger.debug(`Loaded config`);
+		} else {
+			this.config = { ...defaultConfig };
+			this.logger.debug(`Coping default config...`);
+		}
+
+		if (this.files.existConfig('groups')) {
+			const temp = <Holder<GroupInterface>>this.files.getConfig('groups');
 			for (const x in temp) {
 				this.groups[x] = new Group(temp[x]);
 			}
+			this.logger.debug(`Loaded groups`);
 		} else {
 			this.groups['default'] = new Group({ name: 'default', permissions: {} });
+			this.logger.debug(`Creating default group`);
 		}
 
-		if (files.existConfig('.uuidcache')) {
-			this._playerUUIDCache = { ...(<Holder<string>>files.getConfig('.uuidcache')) };
+		if (this.files.existConfig('.uuidcache')) {
+			this._playerUUIDCache = { ...(<Holder<string>>this.files.getConfig('.uuidcache')) };
+			this.logger.debug(`Loaded player cache`);
 		} else {
 			this._playerUUIDCache = {};
 		}
 
-		files.saveConfig('config', this.config);
-		files.saveConfig('groups', this.groups);
+		this.files.saveConfig('config', this.config);
+		this.files.saveConfig('groups', this.groups);
 
 		setupGenerators(this);
+		this.logger.debug(`Default generators are setuped!`);
 
 		this.loadWorld(this.config.defaultWorldName) ?? this.createWorld(this.config.defaultWorldName, [256, 128, 256], this._generators['grasslands']);
 
@@ -103,69 +150,103 @@ export class Server {
 
 		if (this.config.autoSaveInterval > 0) {
 			this._autoSaveInterval = setInterval(() => {
+				this.logger.debug(`Autosave started!`);
+				const d = Date.now();
 				Object.values(this.worlds).forEach((world) => {
 					this.saveWorld(world);
 				});
+				this.logger.debug(`Autosave ended! It took ${Date.now() - d} ms!`);
 			}, 1000 * 60 * this.config.autoSaveInterval);
 		}
-		if (this.config.autoSaveInterval > 0) {
+		if (this.config.backupInterval > 0) {
 			this._autoBackupInterval = setInterval(() => {
+				this.logger.debug(`Backup started!`);
+				const d = Date.now();
 				Object.values(this.worlds).forEach((world) => {
 					this.files.saveWorld(`backup/${world.fileName}-${this.formatDate(new Date())}`, world);
 				});
+				this.logger.debug(`Backup ended! It took ${Date.now() - d} ms!`);
 			}, 1000 * 60 * this.config.backupInterval);
 		}
 
 		setupCommands(this, this._commands);
+		this.logger.debug(`Added default commands`);
 
 		try {
-			this._startLoadingPlugins(() => {
-				this.event.ServerCommandRegistration._emit(this);
-				try {
-					this._startListening();
-				} catch (e) {
-					this.logger.error(e);
-					this.stopServer();
-				}
-
-				logger.log('Server started!');
-
-				this._loaded = true;
-				this.event.ServerLoadingFinished._emit(this);
-			});
+			this.logger.debug(`Plugin loading started!`);
+			const d = Date.now();
+			await this._startLoadingPlugins();
+			this.logger.debug(`Loaded plugins! It took ${Date.now() - d} ms!`);
 		} catch (e) {
+			this.logger.debug(`Oh no`);
 			this.logger.error('Error occured while loading plugins!');
 			this.logger.error(e);
 
 			this.stopServer();
 		}
+
+		this.event.ServerCommandRegistration._emit(this);
+
+		this.files.listWorlds().forEach((x) => this.loadWorld(x));
+
+		try {
+			this._startListening();
+		} catch (e) {
+			this.logger.error(e);
+			this.stopServer();
+		}
+
+		this._loaded = true;
+		this.event.ServerLoadingFinished._emit(this);
+
+		this.logger.log(`Server started! It took ${Date.now() - d} ms!`);
 	}
 
 	// Needs to be implemented by extended class
 	protected _startListening() {}
+	protected _startLoadingPlugins() {}
 
+	/**
+	 * Stops server
+	 */
 	stopServer() {
 		this.isShuttingDown = true;
 		this.logger.log('&6Closing server...');
 		this.files.saveConfig('config', this.config);
 		this.files.saveConfig('groups', this.groups);
 		this.files.saveConfig('.uuidcache', this._playerUUIDCache);
+		this.logger.debug(`Saved default configs`);
 		this.event.ServerShutdown._emit(this);
 
 		Object.values(this.players).forEach((player) => {
 			player.disconnect('Server closed');
 		});
+		this.logger.debug(`Players kicked`);
 
 		Object.values(this.worlds).forEach((world) => {
 			this.saveWorld(world);
 		});
+
+		this.logger.debug(`Worlds saved`);
 	}
 
+	/**
+	 * Connects player (can be virtual!) to server.
+	 *
+	 * @param conn Main connection handler, used for handling packets
+	 * @param client Name of player's client, defaults to `Classic`
+	 * @param overrides Allows to override authentication data
+	 */
 	connectPlayer(conn: ConnectionHandler, client?: string, overrides?: AuthData) {
 		try {
 			conn._server = this;
 			this.logger.conn(`Connection from ${conn.ip}:${conn.port}...`);
 			conn._clientPackets.PlayerIdentification.once(async ({ value: playerInfo }) => {
+				if (playerInfo.protocol != 0x07) {
+					conn.disconnect('Unsupported protocol!');
+					return;
+				}
+
 				conn.sendServerInfo(this);
 
 				const result = await this.authenticatePlayer({
@@ -209,10 +290,22 @@ export class Server {
 		}
 	}
 
+	/**
+	 * Allows to authenticate player, depends on implementation
+	 *
+	 * @param data Authentication data
+	 * @returns validated auth data and checks if player can join
+	 */
 	authenticatePlayer(data: AuthData): Promise<{ auth: AuthData; allow: boolean }> {
 		return new Promise((r) => r({ auth: data, allow: true }));
 	}
 
+	/**
+	 * Executes command as server/console
+	 *
+	 * @param command Used command, without / symbol
+	 * @returns If command was executed
+	 */
 	executeCommand(command: string): boolean {
 		const cmd = this.getCommand(command);
 		if (cmd != undefined) {
@@ -222,16 +315,34 @@ export class Server {
 		return false;
 	}
 
+	/**
+	 * Sends a chat message to everyone on server (including console)
+	 *
+	 * @param message Formatted message
+	 * @param player Player that send it, don't need to be set
+	 */
 	sendChatMessage(message: string, player?: Player) {
 		Object.values(this.players).forEach((p) => p.sendMessage(message, player));
 
 		this.logger.chat(message);
 	}
 
+	/**
+	 * Saves passed world instance
+	 *
+	 * @param world World instance
+	 * @returns If saving was successful
+	 */
 	saveWorld(world: World): boolean {
 		return this.files.saveWorld(world.name, world);
 	}
 
+	/**
+	 * Loads world by name
+	 *
+	 * @param name World name
+	 * @returns World instance or null (if doesn't exist)
+	 */
 	loadWorld(name: string): Nullable<World> {
 		try {
 			if (this.worlds[name] != undefined) {
@@ -253,21 +364,42 @@ export class Server {
 		}
 	}
 
-	unloadWorld(name: string): boolean {
+	/**
+	 * Unloads world from memory
+	 *
+	 * @param name World name
+	 * @param save If world should be saved, defaults to true
+	 * @returns True if successful, otherwise false
+	 */
+
+	unloadWorld(name: string, save = true): boolean {
 		if (this.config.defaultWorldName == name) {
 			return false;
 		} else if (this.worlds[name] == undefined) {
 			return true;
-		} else {
+		} else if (save) {
 			const x = this.saveWorld(this.worlds[name]);
 			if (x) {
 				delete this.worlds[name];
 			}
 
 			return x;
+		} else {
+			delete this.worlds[name];
+			return true;
 		}
 	}
 
+	/**
+	 * Creates new world (if not loaded) or return existing one
+	 *
+	 * @param name World name
+	 * @param size World size, each value needs to be bigger than 0 but smaller or equal to 1024
+	 * @param generator WorldGenerator used to generate it
+	 * @param seed Seed passed to generator, unspecified or 0 is random
+	 * @param player Creator of world (optional)
+	 * @returns Generated world or null (if it fails)
+	 */
 	createWorld(name: string, size: XYZ, generator: WorldGenerator, seed?: number, player?: Player): Nullable<World> {
 		try {
 			if (this.worlds[name] != undefined) {
@@ -282,7 +414,8 @@ export class Server {
 					generator: { software: this.softwareName, type: generator.name },
 					createdBy: {
 						service: player?.service ?? 'Unknown',
-						username: player?.service ?? `${this.softwareName} - ${generator.name}`,
+						username: player?.username ?? `${this.softwareName} - ${generator.name}`,
+						uuid: player?.uuid ?? 'Unknown',
 					},
 					spawnPoint: [size[0] / 2, size[1] / 2 + 20, size[2] / 2],
 				},
@@ -306,8 +439,17 @@ export class Server {
 		}
 	}
 
+	/**
+	 * Adds plugin
+	 *
+	 * @param plugin Plugin instance
+	 * @param altid Alternative, optional name, should be used for better identification
+	 * @returns Promise of Plugin instance (if successful) or null
+	 */
+
 	async addPlugin(plugin: Plugin, altid?: string): Promise<Nullable<Plugin>> {
 		const textId = altid != undefined ? `${plugin.id} | ${altid}` : plugin.id;
+		this.logger.debug(`Plugin ${textId} was requested to be loaded`);
 
 		if (!plugin.id || !plugin.init || !plugin.version || !plugin.cobblestoneApi) {
 			altid ? this.logger.warn(`Plugin ${altid ?? '!NOID'} isn't a valid plguin. Skipping...`) : null;
@@ -319,6 +461,8 @@ export class Server {
 			if (api != null) {
 				if (semver.gte(api, this._minimalApiVersion)) {
 					if (semver.lte(api, this.softwareVersion)) {
+						this.logger.log(`Initializing plugin ${plugin.name} ${plugin.version}`);
+
 						await plugin.init(this);
 
 						this._plugins[plugin.id] = {
@@ -329,16 +473,16 @@ export class Server {
 
 						return this._plugins[plugin.id];
 					} else {
-						this.logger.warn(`Plugin ${plugin.name} (${textId}) requires newer api version (${plugin.api}). Skipping...`);
+						this.logger.warn(`Plugin ${plugin.name} (${textId}) requires newer api version (${plugin.cobblestoneApi}). Skipping...`);
 						return null;
 					}
 				} else {
-					this.logger.warn(`Plugin ${plugin.name} (${textId}) requires outdated api version (${plugin.api}). Skipping...`);
+					this.logger.warn(`Plugin ${plugin.name} (${textId}) requires outdated api version (${plugin.cobblestoneApi}). Skipping...`);
 					return null;
 				}
 			}
 
-			this.logger.warn(`Plugin ${plugin.name} (${textId}) declares usage of invalid api (${plugin.api}). Skipping...`);
+			this.logger.warn(`Plugin ${plugin.name} (${textId}) declares usage of invalid api (${plugin.cobblestoneApi}). Skipping...`);
 			return null;
 		} catch (e) {
 			this.logger.error(`Loading plugin ${plugin.name} (${textId}) caused an exception!`);
@@ -347,38 +491,89 @@ export class Server {
 		}
 	}
 
-	protected _startLoadingPlugins(cb: () => void) {
-		cb();
-	}
-
+	/**
+	 * Returns plugin based on it's id
+	 *
+	 * @param plugin Id of plugin
+	 * @returns Plugin or null
+	 */
 	getPlugin(plugin: string): Nullable<Plugin> {
 		return this._plugins[plugin] ?? null;
 	}
 
+	/**
+	 * Adds new command
+	 *
+	 * @param command Command instance
+	 * @returns Boolean indicating, if it was successful
+	 */
 	addCommand(command: Command): boolean {
 		if (command.name.includes(' ')) {
 			return false;
 		}
 
 		this._commands[command.name] = command;
+		this.logger.debug(`Command ${command.name} added`);
+
 		return true;
 	}
 
+	/**
+	 * Allows to get command from string
+	 *
+	 * @param command
+	 * @returns Command or null
+	 */
 	getCommand(command: string): Nullable<Command> {
 		const x = command.split(' ');
 
 		return this._commands[x[0]] ?? null;
 	}
 
+	/**
+	 * Returns all commands (readonly)
+	 */
+	getAllCommands(): Readonly<Holder<Command>> {
+		return this._commands;
+	}
+
+	/**
+	 * Adds new generator to list of generators
+	 *
+	 * @param gen Generator instance
+	 * @returns Boolean indicating, if operation was successful
+	 */
 	addGenerator(gen: WorldGenerator): boolean {
 		this._generators[gen.name] = gen;
+		this.logger.debug(`Generator ${gen.name} added`);
+
 		return true;
 	}
 
+	/**
+	 * Allows to get generator by name
+	 *
+	 * @param gen Generators name
+	 * @returns WorldGenerator or null
+	 */
 	getGenerator(gen: string): Nullable<WorldGenerator> {
 		return this._generators[gen] ?? null;
 	}
 
+	/**
+	 * Returns all generators (readonly)
+	 */
+	getAllGenerators(): Readonly<Holder<WorldGenerator>> {
+		return this._generators;
+	}
+
+	/**
+	 * Gets and formats message from main config
+	 *
+	 * @param id Message id
+	 * @param values Values
+	 * @returns Formatted message
+	 */
 	getMessage(id: string, values: Holder<string>): string {
 		let message = this.config.messages[id];
 
@@ -393,17 +588,26 @@ export class Server {
 		return message;
 	}
 
+	/**
+	 * Allows to get player's uuid from username. Works only if player joined server at liest once.
+	 *
+	 * @param username Player's username
+	 * @returns Player's UUID or null
+	 */
 	getPlayerIdFromName(username: string): Nullable<string> {
 		return this._playerUUIDCache[username.toLowerCase()] ?? null;
 	}
 
+	/**
+	 * Formats date
+	 */
 	static formatDate(date: number | Date, showTime = true): string {
 		if (!(date instanceof Date)) {
 			date = new Date(date);
 		}
 
 		return (
-			`${date.getFullYear()}-${addZero(date.getMonth())}-${addZero(date.getDay())}` +
+			`${date.getFullYear()}-${addZero(date.getMonth() + 1)}-${addZero(date.getDate())}` +
 			(showTime ? `-${addZero(date.getHours())}-${addZero(date.getMinutes())}-${addZero(date.getSeconds())}` : '')
 		);
 	}
@@ -486,8 +690,10 @@ export interface ILogger {
 	warn(text: string): void;
 	chat(text: string): void;
 	conn(text: string): void;
+	debug(test: string): void;
 
 	storedToFile: boolean;
+	showDebug: boolean;
 }
 
 export interface IFileHelper {
@@ -504,8 +710,6 @@ export interface IFileHelper {
 	getPlayer(uuid: string): Nullable<PlayerData>;
 	existPlayer(uuid: string): boolean;
 	listPlayers(): string[];
-
-	createBaseDirectories(): void;
 }
 
 export interface IConfig {

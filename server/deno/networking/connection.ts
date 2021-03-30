@@ -53,33 +53,33 @@ export class TpcConnectionHandler extends ConnectionHandler {
 		const data = new MCPacketReader(c);
 
 		const id = data.readVarInt();
-
-		if (id == 0) {
+		if (id == 0 && c.length > 2) {
 			data.readVarInt(); // Protocol
 			data.readString(); // Address
 			data.readUShort(); // Port
 
 			const state = data.readVarInt();
 
+			if (!this._conn) return;
+
 			if (state == 1) {
-				this._conn?.write(
-					new MCPacketWriter(0x00)
-						.writeString(
-							JSON.stringify({
-								version: {
-									name: 'Classic 0.30',
-									protocol: 7,
-								},
-								description: {
-									text: `${this._server.config.serverName.replaceAll('&', '§')}\n${this._server.config.serverMotd.replaceAll('&', '§')}`,
-								},
-								favicon: (<DenoServer>this._server)._serverIcon,
-							})
-						)
-						.toPacket()
-				);
+				const data = new MCPacketWriter(0x00)
+					.writeString(
+						JSON.stringify({
+							version: {
+								name: 'Classic 0.30',
+								protocol: 7,
+							},
+							description: {
+								text: `${this._server.config.serverName.replaceAll('&', '§')}\n${this._server.config.serverMotd.replaceAll('&', '§')}`,
+							},
+							favicon: (<DenoServer>this._server)._serverIcon,
+						})
+					)
+					.toPacket();
+				this._conn.write(data);
 			} else {
-				this._conn?.write(
+				this._conn.write(
 					new MCPacketWriter(0x00)
 						.writeString(
 							JSON.stringify({
@@ -89,6 +89,9 @@ export class TpcConnectionHandler extends ConnectionHandler {
 						.toPacket()
 				);
 			}
+		} else if (id == 1) {
+			const x = data.readLong();
+			this._conn?.write(new MCPacketWriter(0x01, 4).writeLong(x).toPacket());
 		}
 	}
 

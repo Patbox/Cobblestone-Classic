@@ -330,6 +330,151 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 		},
 	});
 
+	server.addCommand({
+		name: 'maps',
+		description: 'List all loaded maps',
+		permission: 'commands.maps',
+		execute: (ctx) => {
+			ctx.send('&aAvailable worlds:');
+			let temp = '';
+			Object.values(server.worlds).forEach((w) => {
+				temp == '' ? (temp = w.name) : (temp = [temp, w.name].join(', '));
+
+				if (temp.length > 50) {
+					ctx.send(temp);
+					temp = '';
+				}
+			});
+
+			temp != '' ? ctx.send(temp) : null;
+		},
+	});
+
+	server.addCommand({
+		name: 'goto',
+		description: 'Allows to switch between worlds',
+		permission: 'commands.goto',
+		execute: (ctx) => {
+			if (!ctx.player) {
+				ctx.send('&cOnly players can use this command!');
+				return;
+			}
+
+			const args = ctx.command.split(' ');
+			if (args.length == 2) {
+				const world = server.worlds[args[1]];
+
+				if (world) {
+					ctx.player.changeWorld(world);
+					ctx.send(`&aTeleported to world ${world.name}!`);
+				} else {
+					ctx.send("&cThis world doesn't exist!");
+				}
+			} else {
+				ctx.send('&cInvalid arguments! Usage: &6/goto <world name>');
+			}
+		},
+	});
+
+	server.addCommand({
+		name: 'world',
+		description: 'Allows to access, modify and create worlds',
+		permission: 'commands.world.base',
+		help: [
+			{
+				title: '',
+				number: 0,
+				lines: [],
+			},
+		],
+
+		execute: (ctx) => {
+			const args = ctx.command.split(' ');
+
+			try {
+				if (args.length == 2) {
+					(ctx.player ?? server).executeCommand(`spawn ${args[1]}`);
+				} else if (args.length >= 3) {
+					switch (args[1]) {
+						case 'create':
+							{
+								if (!ctx.checkPermission('commands.world.create')) throw 'perm';
+								if (args.length < 7) throw 'ia';
+
+								const name = args[2];
+								const sizeX = parseInt(args[3]);
+								const sizeY = parseInt(args[4]);
+								const sizeZ = parseInt(args[5]);
+								const generator = server.getGenerator(args[6]);
+								let seed = parseInt(args[7]);
+
+								if (isNaN(seed)) {
+									seed = 0;
+								}
+
+								if (
+									isNaN(sizeX) ||
+									isNaN(sizeY) ||
+									isNaN(sizeZ) ||
+									sizeX < 0 ||
+									sizeY < 0 ||
+									sizeZ < 0 ||
+									sizeX > 1024 ||
+									sizeY > 1024 ||
+									sizeZ > 1024
+								) {
+									ctx.send('&cInvalid world size!');
+									return;
+								}
+
+								if (!generator) {
+									ctx.send('&cInvalid world generator! Check &6/world generator list');
+									return;
+								}
+
+								ctx.send('&yWorld creation started! It can take a while...');
+
+								const world = server.createWorld(name, [sizeX, sizeY, sizeZ], generator, seed, ctx.player ?? undefined);
+								if (!world) {
+									ctx.send("&aCouldn't create this world!");
+									return;
+								}
+
+								ctx.send('&aWorld created!');
+								ctx.player?.changeWorld(world);
+							}
+							break;
+						case 'spawnpoint':
+							{
+								if (!ctx.checkPermission('commands.world.spawnpoint')) throw 'perm';
+								if (!ctx.player) throw 'po';
+
+								const world = ctx.player.world;
+								world.spawnPoint = [...ctx.player.position];
+								world.spawnPointPitch = ctx.player.pitch;
+								world.spawnPointYaw = ctx.player.yaw;
+
+								ctx.send(`&aChanged worlds spawnpoint to ${world.spawnPoint.join(', ')}.`)
+							}
+							break;
+					}
+				} else {
+					throw 'ia';
+				}
+			} catch (e) {
+				if (e == 'ia') {
+					ctx.send('&cInvalid arguments! Check /help world!');
+				} else if (e == 'p' || e == 'No player!') {
+					ctx.send('&cInvalid player!');
+				} else if (e == 'po') {
+					ctx.send('&cThis command can be only executed by players!');
+				} else if (e == 'perm') {
+					ctx.send("&cYou don't have required permissions!");
+				}
+			}
+		},
+	});
+
 	/* Template
 
 	server.addCommand({
@@ -346,7 +491,7 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 		],
 
 		execute: (ctx) => {
-		
+			const args = ctx.command.split(' ');
 		}
 	});
 	*/

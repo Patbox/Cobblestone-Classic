@@ -12,9 +12,11 @@ export class DenoServer extends Server {
 	protected _saltMineOnline: string;
 	protected _saltBetaCraft: string;
 	_serverIcon: string | undefined;
+	protected _shouldLoadPlugins: boolean;
 
-	constructor() {
-		super(fileHelper, logger);
+	constructor(loadPlugins = true, devMode = false) {
+		super(fileHelper, logger, devMode);
+		this._shouldLoadPlugins = loadPlugins;
 		{
 			const hash = createHash('md5');
 			hash.update(<string>uuid.v4());
@@ -25,6 +27,16 @@ export class DenoServer extends Server {
 			hash.update(<string>uuid.v4());
 			this._saltBetaCraft = hash.toString();
 		}
+	}
+
+	async _startServer() {
+		['world', 'player', 'config', 'world/backup', 'logs', 'plugins'].forEach((x) => {
+			if (!fs.existsSync(`./${x}`)) {
+				Deno.mkdirSync(`./${x}`);
+			}
+		});
+
+		await super._startServer();
 	}
 
 	protected _startListening() {
@@ -243,16 +255,14 @@ export class DenoServer extends Server {
 		return { auth: data, allow: false };
 	}
 
-	protected async _startLoadingPlugins(cb: () => void) {
-		if (this._loaded) return;
+	protected async _startLoadingPlugins() {
+		if (this._loaded || !this._shouldLoadPlugins) return;
 		for (const dirEntry of Deno.readDirSync('./plugins/')) {
 			if (dirEntry.isFile && (dirEntry.name.endsWith('.ts') || dirEntry.name.endsWith('.ts'))) {
 				const plugin = await import(Deno.cwd() + `/plugins/${dirEntry.name}`);
 				this.addPlugin(plugin, dirEntry.name);
 			}
 		}
-
-		cb();
 	}
 }
 
@@ -291,7 +301,17 @@ const logger: ILogger & { writeToLog: (t: string) => void; file?: Deno.File; ope
 		logger.writeToLog(out);
 	},
 
+	debug: (text: string) => {
+		if (logger.showDebug) {
+			const out = `&8[&f${hourNow()}&2 Debug&8] &7${text}`;
+
+			console.log(colorToTerminal(out));
+			logger.writeToLog(out);
+		}
+	},
+
 	storedToFile: true,
+	showDebug: false,
 
 	writeToLog: (t: string) => {
 		const clean = t.replaceAll(colorsTag, '');
@@ -452,7 +472,7 @@ const fileHelper: IFileHelper = {
 
 			for (const dirEntry of Deno.readDirSync('./world/')) {
 				if (dirEntry.isFile && dirEntry.name.endsWith('.cw')) {
-					out.push(dirEntry.name.substr(0, dirEntry.name.length - 4));
+					out.push(dirEntry.name.substr(0, dirEntry.name.length - 3));
 				}
 			}
 
@@ -506,7 +526,7 @@ const fileHelper: IFileHelper = {
 
 			for (const dirEntry of Deno.readDirSync('./player/')) {
 				if (dirEntry.isFile && dirEntry.name.endsWith('.json')) {
-					out.push(dirEntry.name.substr(0, dirEntry.name.length - 6));
+					out.push(dirEntry.name.substr(0, dirEntry.name.length - 5));
 				}
 			}
 
@@ -515,13 +535,5 @@ const fileHelper: IFileHelper = {
 			logger.error(e);
 			return [];
 		}
-	},
-
-	createBaseDirectories(): void {
-		['world', 'player', 'config', 'world/backup', 'logs', 'plugins'].forEach((x) => {
-			if (!fs.existsSync(`./${x}`)) {
-				Deno.mkdirSync(`./${x}`);
-			}
-		});
 	},
 };
