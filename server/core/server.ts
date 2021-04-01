@@ -13,19 +13,23 @@ import { setupCommands } from './commands.ts';
 export class Server {
 	// Main informations about server
 	static readonly softwareName = 'Cobblestone';
-	static readonly softwareVersion = '0.0.5';
+	static readonly softwareId = 'cobblestone';
+	static readonly softwareVersion = '0.0.6';
+	
 	static readonly targetGame = 'Minecraft Classic';
 	static readonly targetVersion = '0.30c';
 
 	// Copy some of it to class instances
 	readonly softwareName = Server.softwareName;
 	readonly softwareVersion = Server.softwareVersion;
-
+	readonly softwareId = Server.softwareId;
+	readonly targetGame = Server.targetGame;
+	readonly targetVersion = Server.targetVersion;
 	// Version of API, goes up when new methods are added
-	readonly _apiVersion = '0.0.5';
+	readonly _apiVersion = '0.0.6';
 
 	// Minimal compatible API
-	readonly _minimalApiVersion = '0.0.5';
+	readonly _minimalApiVersion = '0.0.6';
 
 	/**
 	 * Wrapper to access filesystem. Used mostly to abstract stuff
@@ -103,103 +107,108 @@ export class Server {
 			throw new Error("You can't start server twice!");
 		}
 
-		this.logger.log(`&aStarting ${this.softwareName} ${this.softwareVersion} server...`);
-		this.logger.debug(`&cDev mode is active! If you are running public server, you should start it normally (with run.bat/sh) instead!`);
-
-		const d = Date.now();
-
-		if (this.files.existConfig('config')) {
-			const tmp = <IConfig>this.files.getConfig('config');
-			this.config = { ...defaultConfig, ...tmp };
-			(<Holder<string>>this.config.messages) = { ...defaultConfig.messages, ...(tmp.messages ?? {}) };
-			this.logger.debug(`Loaded config`);
-		} else {
-			this.config = { ...defaultConfig };
-			this.logger.debug(`Coping default config...`);
-		}
-
-		if (this.files.existConfig('groups')) {
-			const temp = <Holder<GroupInterface>>this.files.getConfig('groups');
-			for (const x in temp) {
-				this.groups[x] = new Group(temp[x]);
-			}
-			this.logger.debug(`Loaded groups`);
-		} else {
-			this.groups['default'] = new Group({ name: 'default', permissions: {} });
-			this.logger.debug(`Creating default group`);
-		}
-
-		if (this.files.existConfig('.uuidcache')) {
-			this._playerUUIDCache = { ...(<Holder<string>>this.files.getConfig('.uuidcache')) };
-			this.logger.debug(`Loaded player cache`);
-		} else {
-			this._playerUUIDCache = {};
-		}
-
-		this.files.saveConfig('config', this.config);
-		this.files.saveConfig('groups', this.groups);
-
-		setupGenerators(this);
-		this.logger.debug(`Default generators are setuped!`);
-
-		this.loadWorld(this.config.defaultWorldName) ?? this.createWorld(this.config.defaultWorldName, [256, 128, 256], this._generators['grasslands']);
-
-		Object.values(this.worlds).forEach((world) => {
-			this.files.saveWorld(`backup/${world.fileName}-${this.formatDate(new Date())}`, world);
-		});
-
-		if (this.config.autoSaveInterval > 0) {
-			this._autoSaveInterval = setInterval(() => {
-				this.logger.debug(`Autosave started!`);
-				const d = Date.now();
-				Object.values(this.worlds).forEach((world) => {
-					this.saveWorld(world);
-				});
-				this.logger.debug(`Autosave ended! It took ${Date.now() - d} ms!`);
-			}, 1000 * 60 * this.config.autoSaveInterval);
-		}
-		if (this.config.backupInterval > 0) {
-			this._autoBackupInterval = setInterval(() => {
-				this.logger.debug(`Backup started!`);
-				const d = Date.now();
-				Object.values(this.worlds).forEach((world) => {
-					this.files.saveWorld(`backup/${world.fileName}-${this.formatDate(new Date())}`, world);
-				});
-				this.logger.debug(`Backup ended! It took ${Date.now() - d} ms!`);
-			}, 1000 * 60 * this.config.backupInterval);
-		}
-
-		setupCommands(this, this._commands);
-		this.logger.debug(`Added default commands`);
-
 		try {
-			this.logger.debug(`Plugin loading started!`);
+			this.logger.log(`&aStarting ${Server.softwareName} ${Server.softwareVersion} server for ${Server.targetGame} ${Server.targetVersion}...`);
+			this.logger.debug(`&cDev mode is active! If you are running public server, you should start it normally (with run.bat/sh) instead!`);
+
 			const d = Date.now();
-			await this._startLoadingPlugins();
-			this.logger.debug(`Loaded plugins! It took ${Date.now() - d} ms!`);
+
+			if (this.files.existConfig('config')) {
+				const tmp = <IConfig>this.files.getConfig('config');
+				this.config = { ...defaultConfig, ...tmp };
+				(<Holder<string>>this.config.messages) = { ...defaultConfig.messages, ...(tmp.messages ?? {}) };
+				this.logger.debug(`Loaded config`);
+			} else {
+				this.config = { ...defaultConfig };
+				this.logger.debug(`Coping default config...`);
+			}
+
+			if (this.files.existConfig('groups')) {
+				const temp = <Holder<GroupInterface>>this.files.getConfig('groups');
+				for (const x in temp) {
+					this.groups[x] = new Group(temp[x]);
+				}
+				this.logger.debug(`Loaded groups`);
+			} else {
+				this.groups['default'] = new Group({ name: 'default', permissions: {} });
+				this.logger.debug(`Creating default group`);
+			}
+
+			if (this.files.existConfig('.uuidcache')) {
+				this._playerUUIDCache = { ...(<Holder<string>>this.files.getConfig('.uuidcache')) };
+				this.logger.debug(`Loaded player cache`);
+			} else {
+				this._playerUUIDCache = {};
+			}
+
+			this.files.saveConfig('config', this.config);
+			this.files.saveConfig('groups', this.groups);
+
+			setupGenerators(this);
+			this.logger.debug(`Default generators are setuped!`);
+
+			this.loadWorld(this.config.defaultWorldName) ?? this.createWorld(this.config.defaultWorldName, [256, 128, 256], this._generators['grasslands']);
+
+			Object.values(this.worlds).forEach((world) => {
+				this.files.saveWorld(`backup/${world.fileName}-${this.formatDate(new Date())}`, world);
+			});
+
+			if (this.config.autoSaveInterval > 0) {
+				this._autoSaveInterval = setInterval(() => {
+					this.logger.debug(`Autosave started!`);
+					const d = Date.now();
+					Object.values(this.worlds).forEach((world) => {
+						this.saveWorld(world);
+					});
+					this.logger.debug(`Autosave ended! It took ${Date.now() - d} ms!`);
+				}, 1000 * 60 * this.config.autoSaveInterval);
+			}
+			if (this.config.backupInterval > 0) {
+				this._autoBackupInterval = setInterval(() => {
+					this.logger.debug(`Backup started!`);
+					const d = Date.now();
+					Object.values(this.worlds).forEach((world) => {
+						this.files.saveWorld(`backup/${world.fileName}-${this.formatDate(new Date())}`, world);
+					});
+					this.logger.debug(`Backup ended! It took ${Date.now() - d} ms!`);
+				}, 1000 * 60 * this.config.backupInterval);
+			}
+
+			setupCommands(this, this._commands);
+			this.logger.debug(`Added default commands`);
+
+			try {
+				this.logger.debug(`Plugin loading started!`);
+				const d = Date.now();
+				await this._startLoadingPlugins();
+				this.logger.debug(`Loaded plugins! It took ${Date.now() - d} ms!`);
+			} catch (e) {
+				this.logger.debug(`Oh no`);
+				this.logger.error('Error occured while loading plugins!');
+				this.logger.error(e);
+
+				this.stopServer();
+			}
+
+			this.event.ServerCommandRegistration._emit(this);
+
+			this.files.listWorlds().forEach((x) => this.loadWorld(x));
+
+			try {
+				this._startListening();
+			} catch (e) {
+				this.logger.error(e);
+				this.stopServer();
+			}
+
+			this._loaded = true;
+			this.event.ServerLoadingFinished._emit(this);
+
+			this.logger.log(`Server started! It took ${Date.now() - d} ms!`);
 		} catch (e) {
-			this.logger.debug(`Oh no`);
-			this.logger.error('Error occured while loading plugins!');
-			this.logger.error(e);
-
-			this.stopServer();
+			this.logger.critical(`Server crashed!`);
+			this.logger.critical(e);
 		}
-
-		this.event.ServerCommandRegistration._emit(this);
-
-		this.files.listWorlds().forEach((x) => this.loadWorld(x));
-
-		try {
-			this._startListening();
-		} catch (e) {
-			this.logger.error(e);
-			this.stopServer();
-		}
-
-		this._loaded = true;
-		this.event.ServerLoadingFinished._emit(this);
-
-		this.logger.log(`Server started! It took ${Date.now() - d} ms!`);
 	}
 
 	// Needs to be implemented by extended class
@@ -216,18 +225,30 @@ export class Server {
 		this.files.saveConfig('groups', this.groups);
 		this.files.saveConfig('.uuidcache', this._playerUUIDCache);
 		this.logger.debug(`Saved default configs`);
-		this.event.ServerShutdown._emit(this);
+		try {
+			this.event.ServerShutdown._emit(this);
+		} catch {
+			this.logger.critical(`Shutdown event couldn't be processed! Plugin data might get corrupted!`);
+		}
 
-		Object.values(this.players).forEach((player) => {
-			player.disconnect('Server closed');
-		});
-		this.logger.debug(`Players kicked`);
+		try {
+			Object.values(this.players).forEach((player) => {
+				player.disconnect('Server closed');
+			});
+			this.logger.debug(`Players kicked`);
+		} catch {
+			this.logger.critical(`Error occured while saving players! Data might get corrupted!`);
+		}
 
-		Object.values(this.worlds).forEach((world) => {
-			this.saveWorld(world);
-		});
+		try {
+			Object.values(this.worlds).forEach((world) => {
+				this.saveWorld(world);
+			});
 
-		this.logger.debug(`Worlds saved`);
+			this.logger.debug(`Worlds saved`);
+		} catch {
+			this.logger.critical(`Error occured while saving worlds! Data might get corrupted!`);
+		}
 	}
 
 	/**
@@ -687,6 +708,7 @@ function addZero(n: number): string {
 export interface ILogger {
 	log(text: string): void;
 	error(text: string): void;
+	critical(text: string): void
 	warn(text: string): void;
 	chat(text: string): void;
 	conn(text: string): void;

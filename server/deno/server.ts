@@ -268,7 +268,7 @@ export class DenoServer extends Server {
 
 const colorsTag = /&[0-9a-fl-or]/gi;
 
-const logger: ILogger & { writeToLog: (t: string) => void; file?: Deno.File; openedAt?: number } = {
+export const logger: ILogger & { writeToLog: (t: string) => void; file?: Deno.File; openedAt?: number } = {
 	log: (text: string) => {
 		const out = `&8[&f${hourNow()}&8] &f${text}`;
 
@@ -277,6 +277,12 @@ const logger: ILogger & { writeToLog: (t: string) => void; file?: Deno.File; ope
 	},
 	error: (text: string) => {
 		const out = `&8[&f${hourNow()} &4Error&8] &c${text}`;
+
+		console.log(colorToTerminal(out));
+		logger.writeToLog(out);
+	},
+	critical: (text: string) => {
+		const out = `&8[&f${hourNow()} &4Critical!&8] &4${text}`;
 
 		console.log(colorToTerminal(out));
 		logger.writeToLog(out);

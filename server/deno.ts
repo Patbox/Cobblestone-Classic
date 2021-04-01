@@ -1,4 +1,4 @@
-import { DenoServer } from './deno/server.ts';
+import { DenoServer, logger } from './deno/server.ts';
 
 const args = Deno.args;
 const start = Deno.build.os == 'windows' ? 'run.bat' : 'run.sh';
@@ -33,8 +33,13 @@ args.forEach((x) => {
 
 if (!started) {
 	started = true;
-	const server = new DenoServer(plugins, devMode);
-	server._startServer();
+	try {
+		const server = new DenoServer(plugins, devMode);
+		server._startServer();
+	} catch (e) {
+		logger.critical('Critical error!');
+		logger.critical(e);
+	}
 }
 
 function displayHelp() {

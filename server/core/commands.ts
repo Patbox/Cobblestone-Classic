@@ -382,9 +382,15 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 		permission: 'commands.world.base',
 		help: [
 			{
-				title: '',
+				title: '/world command',
 				number: 0,
-				lines: [],
+				lines: [
+					'This commands allow admins to manipulate worlds!',
+					'&6/worlds create <name> <x> <y> <z> <generator> [<seed>]',
+					'&7 creates new world.',
+					'&6/worlds spawnpoint',
+					"&7 Changes spawnpoint of world to player's position",
+				],
 			},
 		],
 
@@ -392,9 +398,7 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 			const args = ctx.command.split(' ');
 
 			try {
-				if (args.length == 2) {
-					(ctx.player ?? server).executeCommand(`spawn ${args[1]}`);
-				} else if (args.length >= 3) {
+				if (args.length >= 2) {
 					switch (args[1]) {
 						case 'create':
 							{
@@ -454,7 +458,7 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 								world.spawnPointPitch = ctx.player.pitch;
 								world.spawnPointYaw = ctx.player.yaw;
 
-								ctx.send(`&aChanged worlds spawnpoint to ${world.spawnPoint.join(', ')}.`)
+								ctx.send(`&aChanged worlds spawnpoint to ${world.spawnPoint.join(', ')}.`);
 							}
 							break;
 					}
