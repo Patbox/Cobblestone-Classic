@@ -9,7 +9,7 @@ import { AuthData, Nullable, SubServices } from '../core/types.ts';
 const textEncoder = new TextEncoder();
 
 export class DenoServer extends Server {
-	protected _saltMineOnline: string;
+	//protected _saltMineOnline: string;
 	protected _saltBetaCraft: string;
 	_serverIcon: string | undefined;
 	protected _shouldLoadPlugins: boolean;
@@ -17,11 +17,11 @@ export class DenoServer extends Server {
 	constructor(loadPlugins = true, devMode = false) {
 		super(fileHelper, logger, devMode);
 		this._shouldLoadPlugins = loadPlugins;
-		{
+		/*{
 			const hash = createHash('md5');
 			hash.update(<string>uuid.v4());
 			this._saltMineOnline = hash.toString();
-		}
+		}*/
 		{
 			const hash = createHash('md5');
 			hash.update(<string>uuid.v4());
@@ -131,7 +131,7 @@ export class DenoServer extends Server {
 			const players: string[] = [];
 			Object.values(this.players).forEach((p) => players.push(p.username));
 
-			try {
+			/*try {
 				if (this.config.publicOnMineOnline) {
 					const obj = {
 						name: this.config.serverName,
@@ -163,7 +163,7 @@ export class DenoServer extends Server {
 				}
 			} catch (e) {
 				this.logger.warn(`Couldn't send heartbeat to MineOnline!`);
-			}
+			}*/
 
 			try {
 				if (this.config.useBetaCraftHeartbeat) {
@@ -205,18 +205,18 @@ export class DenoServer extends Server {
 
 		if (this.config.classicOnlineMode) {
 			let subService: Nullable<SubServices> = null;
-			const hash = createHash('md5');
+			/*const hash = createHash('md5');
 			hash.update(this._saltMineOnline + data.username);
 
 			if (hash.toString() == data.secret) {
 				subService = 'MineOnline';
-			} else {
+			} else {*/
 				const hash = createHash('md5');
 				hash.update(this._saltBetaCraft + data.username);
 				if (hash.toString() == data.secret) {
 					subService = 'Betacraft';
 				}
-			}
+			//}
 
 			if (subService != null) {
 				const moj: { id: string; name: string; error?: string } = await (

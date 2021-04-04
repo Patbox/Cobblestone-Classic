@@ -7,7 +7,7 @@ export type Nullable<T> = null | T;
 
 export type Services = 'Unknown' | 'Minecraft' | 'VoxelSrv' | 'ClassiCube';
 
-export type SubServices = 'MineOnline' | 'Betacraft';
+export type SubServices = 'Betacraft';
 
 export interface AuthData {
 	username: string;
