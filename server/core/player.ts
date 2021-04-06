@@ -350,7 +350,7 @@ export class Player {
 	 * Do not use unless you know what are you doing
 	 */
 	_action_block_break(x: number, y: number, z: number, block: number) {
-		if (!this.world.isInBounds(x, y, z) || !(<Holder<Block>>blocks)[blocksIdsToName[block]].placeable) {
+		if (!this.world.isInBounds(x, y, z) || !(<Holder<Block>>blocks)[blocksIdsToName[block]]?.placeable) {
 			this._connectionHandler.setBlock(x, y, z, this.world.getBlock(x, y, z));
 			return;
 		}

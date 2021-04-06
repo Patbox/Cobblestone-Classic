@@ -14,7 +14,7 @@ export class Server {
 	// Main informations about server
 	static readonly softwareName = 'Cobblestone';
 	static readonly softwareId = 'cobblestone';
-	static readonly softwareVersion = '0.0.7';
+	static readonly softwareVersion = '0.0.8';
 	
 	static readonly targetGame = 'Minecraft Classic';
 	static readonly targetVersion = '0.30c';
@@ -26,7 +26,7 @@ export class Server {
 	readonly targetGame = Server.targetGame;
 	readonly targetVersion = Server.targetVersion;
 	// Version of API, goes up when new methods are added
-	readonly _apiVersion = '0.0.7';
+	readonly _apiVersion = '0.0.8';
 
 	// Minimal compatible API
 	readonly _minimalApiVersion = '0.0.6';
