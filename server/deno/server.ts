@@ -326,6 +326,7 @@ export const logger: ILogger & { writeToLog: (t: string) => void; file?: Deno.Fi
 
 		if (logger.openedAt != day || logger.file == undefined) {
 			logger.openedAt = day;
+			logger.file?.close();
 			const base = Server.formatDate(date, false);
 			let name = base;
 			let n = 1;
@@ -334,7 +335,6 @@ export const logger: ILogger & { writeToLog: (t: string) => void; file?: Deno.Fi
 				name = `${base}-${n}`;
 				n = n + 1;
 			}
-
 			logger.file = Deno.openSync(`./logs/${name}.log`, { write: true, read: true, create: true });
 		}
 
