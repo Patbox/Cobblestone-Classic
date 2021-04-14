@@ -7,15 +7,15 @@ import { AuthData, Holder, Command, GroupInterface, Plugin, Nullable, XYZ } from
 import { ConnectionHandler } from './networking/connection.ts';
 import { setupGenerators } from './world/generators.ts';
 import { semver } from './deps.ts';
-import { blocks, blockIds, blocksIdsToName } from './world/blocks.ts';
+import { blocks, blockIds, blocksIdsToName, Block } from './world/blocks.ts';
 import { setupCommands } from './commands.ts';
 
 export class Server {
 	// Main informations about server
 	static readonly softwareName = 'Cobblestone';
 	static readonly softwareId = 'cobblestone';
-	static readonly softwareVersion = '0.0.8';
-	
+	static readonly softwareVersion = '0.0.9';
+
 	static readonly targetGame = 'Minecraft Classic';
 	static readonly targetVersion = '0.30c';
 
@@ -26,7 +26,7 @@ export class Server {
 	readonly targetGame = Server.targetGame;
 	readonly targetVersion = Server.targetVersion;
 	// Version of API, goes up when new methods are added
-	readonly _apiVersion = '0.0.8';
+	readonly _apiVersion = '0.0.9';
 
 	// Minimal compatible API
 	readonly _minimalApiVersion = '0.0.6';
@@ -74,7 +74,7 @@ export class Server {
 
 	readonly blocks = blocks;
 	readonly blockIds = blockIds;
-	readonly blockIdsToNames = blocksIdsToName;
+	readonly blockIdToName = blocksIdsToName;
 
 	readonly groups: Holder<Group> = {};
 
@@ -86,6 +86,7 @@ export class Server {
 
 	protected _autoSaveInterval = -1;
 	protected _autoBackupInterval = -1;
+	protected _worldTickInterval = -1;
 
 	_loaded = false;
 
@@ -204,6 +205,12 @@ export class Server {
 			this._loaded = true;
 			this.event.ServerLoadingFinished._emit(this);
 
+			let tick = 0n;
+			this._worldTickInterval = setInterval(() => {
+				Object.values(this.worlds).forEach((world) => world._tick(tick));
+				tick++;
+			}, 1000 / 20);
+
 			this.logger.log(`Server started! It took ${Date.now() - d} ms!`);
 		} catch (e) {
 			this.logger.critical(`Server crashed!`);
@@ -220,6 +227,15 @@ export class Server {
 	 */
 	stopServer() {
 		this.isShuttingDown = true;
+		try {
+			clearInterval(this._worldTickInterval);
+			clearInterval(this._autoBackupInterval);
+			clearInterval(this._autoSaveInterval);
+		} catch (e) {
+			this.logger.warn("Couldn't clear intervals!");
+			this.logger.warn(e)
+		}
+
 		this.logger.log('&6Closing server...');
 		this.files.saveConfig('config', this.config);
 		this.files.saveConfig('groups', this.groups);
@@ -299,7 +315,7 @@ export class Server {
 					this.players[player.uuid] = player;
 					this._playerUUIDCache[player.username.toLowerCase()] = player.uuid;
 
-					player.changeWorld(player.world);
+					await player.changeWorld(player.world);
 					this.sendChatMessage(this.getMessage('join', { player: player.getDisplayName() }), player);
 				} else {
 					conn.disconnect('You need to log in!');
@@ -330,7 +346,7 @@ export class Server {
 	executeCommand(command: string): boolean {
 		const cmd = this.getCommand(command);
 		if (cmd != undefined) {
-			cmd.execute({ server: this, player: null, command, send: this.logger.log, checkPermission: (x) => true });
+			cmd.execute({ server: this, player: null, command, send: this.logger.log, checkPermission: (_x) => true });
 			return true;
 		}
 		return false;
@@ -399,6 +415,7 @@ export class Server {
 		} else if (this.worlds[name] == undefined) {
 			return true;
 		} else if (save) {
+			this.worlds[name].teleportAllPlayers(this.worlds[this.config.defaultWorldName]);
 			const x = this.saveWorld(this.worlds[name]);
 			if (x) {
 				delete this.worlds[name];
@@ -461,6 +478,25 @@ export class Server {
 	}
 
 	/**
+	 * Deletes world by it's name
+	 *
+	 * @param name World's name
+	 */
+	deleteWorld(name: string): boolean {
+		if (this.config.defaultWorldName == name) {
+			return false;
+		} else {
+			const x = this.unloadWorld(name, false);
+
+			if (this.files.existWorld(name)) {
+				return this.files.deleteWorld(name);
+			}
+
+			return x;
+		}
+	}
+
+	/**
 	 * Adds plugin
 	 *
 	 * @param plugin Plugin instance
@@ -489,7 +525,7 @@ export class Server {
 						this._plugins[plugin.id] = {
 							...plugin,
 							name: plugin.name ?? plugin.id,
-							init: (x) => null,
+							init: (_x) => null,
 						};
 
 						return this._plugins[plugin.id];
@@ -537,6 +573,26 @@ export class Server {
 		this.logger.debug(`Command ${command.name} added`);
 
 		return true;
+	}
+
+	/**
+	 * Removes command
+	 *
+	 * @param command Command name
+	 * @returns Boolean indicating, if it was successful
+	 */
+	removeCommand(command: string): boolean {
+		if (command.includes(' ')) {
+			return false;
+		}
+
+		if (this._commands[command]) {
+			delete this._commands[command];
+			this.logger.debug(`Command ${command} removed`);
+			return true;
+		}
+
+		return false;
 	}
 
 	/**
@@ -617,6 +673,16 @@ export class Server {
 	 */
 	getPlayerIdFromName(username: string): Nullable<string> {
 		return this._playerUUIDCache[username.toLowerCase()] ?? null;
+	}
+
+	/**
+	 * Converts block id to Block instance
+	 *
+	 * @param id Block id
+	 * @returns Block or null if invalid
+	 */
+	getBlock(id: number): Nullable<Block> {
+		return (<Holder<Block>>this.blocks)[this.blockIdToName[id]] ?? null;
 	}
 
 	/**
@@ -708,7 +774,7 @@ function addZero(n: number): string {
 export interface ILogger {
 	log(text: string): void;
 	error(text: string): void;
-	critical(text: string): void
+	critical(text: string): void;
 	warn(text: string): void;
 	chat(text: string): void;
 	conn(text: string): void;
@@ -720,15 +786,18 @@ export interface ILogger {
 
 export interface IFileHelper {
 	saveConfig(namespace: string, config: unknown): boolean;
+	deleteConfig(namespace: string, config: unknown): boolean;
 	getConfig(namespace: string): Nullable<unknown>;
 	existConfig(namespace: string): boolean;
 
 	saveWorld(name: string, world: World): boolean;
+	deleteWorld(name: string): boolean;
 	getWorld(namespace: string): Nullable<WorldData>;
 	existWorld(name: string): boolean;
 	listWorlds(): string[];
 
 	savePlayer(uuid: string, player: PlayerData): boolean;
+	deletePlayer(uuid: string): boolean;
 	getPlayer(uuid: string): Nullable<PlayerData>;
 	existPlayer(uuid: string): boolean;
 	listPlayers(): string[];

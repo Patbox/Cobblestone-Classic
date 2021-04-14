@@ -48,7 +48,9 @@ export class ConnectionHandler {
 		}
 	}
 
-	async _send(packet: Uint8Array) {}
+	_send(_packet: Uint8Array) {
+		console.log(_packet);
+	}
 
 	sendServerInfo(server: Server) {
 		this._server = server;
@@ -81,6 +83,7 @@ export class ConnectionHandler {
 			});
 
 			await this._send(packet);
+			await new Promise((res) => {setTimeout(() => res(null), 5) }) 
 		}
 
 		await this._send(serverPackets.encodeLevelFinalize({ x: world.size[0], y: world.size[1], z: world.size[2] }));

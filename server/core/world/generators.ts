@@ -7,14 +7,14 @@ import { makeMurmur } from '../../libs/murmur.ts'
 export function setupGenerators(server: Server) {
 	server.addGenerator({
 		name: 'flat',
-		generate: (world: World, seed2?: number) => {
+		generate: (world: World, _seed2?: number) => {
 			const [xSize, ySize, zSize] = world.size;
 
 			for (let y = 0; y < ySize; y++) {
 				const block = y > ySize / 2 ? blockIds.air : y == ySize / 2 ? blockIds.grass : y > ySize / 2 - 4 ? blockIds.dirt : blockIds.stone;
 				for (let x = 0; x < xSize; x++) {
 					for (let z = 0; z < zSize; z++) {
-						world.rawSetBlock(x, y, z, block);
+						world.setBlockId(x, y, z, block);
 					}
 				}
 			}
@@ -73,7 +73,7 @@ export function setupGenerators(server: Server) {
 							block = y > (ySize - 1) / 2 ? blockIds.air : blockIds.water;
 						}
 
-						world.rawSetBlock(x, y, z, block);
+						world.setBlockId(x, y, z, block);
 					}
 				}
 			}
@@ -81,19 +81,19 @@ export function setupGenerators(server: Server) {
 			for (let y = 0; y < ySize; y++) {
 				for (let x = 0; x < xSize; x++) {
 					for (let z = 0; z < zSize; z++) {
-						const b0 = world.getBlock(x, y, z);
-						const bm1 = world.getBlock(x, y - 1, z);
+						const b0 = world.getBlockId(x, y, z);
+						const bm1 = world.getBlockId(x, y - 1, z);
 
 						if (bm1 == blockIds.grass && b0 == blockIds.air) {
 							if (hash(seed, x, y, z, 346346) < 0.1) {
-								world.rawSetBlock(x, y, z, hash(seed, x, y, z, 463) >= 0.5 ? blockIds.rose : blockIds.dantelion);
+								world.setBlockId(x, y, z, hash(seed, x, y, z, 463) >= 0.5 ? blockIds.rose : blockIds.dantelion);
 							} else if (hash(seed, x, y, z, 34656) < 0.001) {
 								const size = Math.round(hash(seed * 5, 5483, x, y, z));
 								const height = 5 + Math.round(hash(seed, x, y, z)) + size * 2;
 
 								for (let y2 = 0; y2 < height; y2++) {
-									if (world.isInBounds(x, y + y2, z) && world.getBlock(x, y + y2, z) == 0) {
-										world.rawSetBlock(x, y + y2, z, blockIds.wood);
+									if (world.isInBounds(x, y + y2, z) && world.getBlockId(x, y + y2, z) == 0) {
+										world.setBlockId(x, y + y2, z, blockIds.wood);
 									}
 								}
 
@@ -102,11 +102,11 @@ export function setupGenerators(server: Server) {
 										for (let z2 = -5; z2 <= 5; z2++) {
 											if (
 												world.isInBounds(x + x2, y + y2 + height - 1, z + z2) &&
-												world.getBlock(x + x2, y + y2 + height - 1, z + z2) == 0 &&
+												world.getBlockId(x + x2, y + y2 + height - 1, z + z2) == 0 &&
 												hash(5435, x + x2, y + y2 + height - 1, z + z2, seed * 2) > 0.3 &&
 												dist(x2, y2, z2) <= 4 + size
 											) {
-												world.rawSetBlock(x + x2, y + y2 + height - 1, z + z2, blockIds.leaves);
+												world.setBlockId(x + x2, y + y2 + height - 1, z + z2, blockIds.leaves);
 											}
 										}
 									}

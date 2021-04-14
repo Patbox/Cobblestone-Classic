@@ -1,9 +1,9 @@
 import { TpcConnectionHandler, VoxelSrvConnectionHandler } from './networking/connection.ts';
-import { PlayerData } from '../core/player.ts';
+import { Player, PlayerData } from '../core/player.ts';
 import { IFileHelper, ILogger, Server } from '../core/server.ts';
 import { World } from '../core/world/world.ts';
 import { fs, createHash, wss, serve, serveTLS } from './deps.ts';
-import { gzip, ungzip, uuid } from '../core/deps.ts';
+import { gzip, semver, ungzip, uuid } from '../core/deps.ts';
 import { AuthData, Nullable, SubServices } from '../core/types.ts';
 
 const textEncoder = new TextEncoder();
@@ -13,6 +13,10 @@ export class DenoServer extends Server {
 	protected _saltBetaCraft: string;
 	_serverIcon: string | undefined;
 	protected _shouldLoadPlugins: boolean;
+
+	static readonly denoVersion = '1.9';
+	static readonly denoVersionMin = '1.9.0';
+	static readonly denoVersionMax = '1.10.0';
 
 	constructor(loadPlugins = true, devMode = false) {
 		super(fileHelper, logger, devMode);
@@ -30,6 +34,10 @@ export class DenoServer extends Server {
 	}
 
 	async _startServer() {
+		if (!semver.satisfies(Deno.version.deno, '>=' + DenoServer.denoVersionMin + ' <' + DenoServer.denoVersionMax )) {
+			this.logger.warn(`Your Deno version is unsupported! This software recomends ${DenoServer.denoVersion}, while you are using ${Deno.version.deno}!`)
+		}
+		
 		['world', 'player', 'config', 'world/backup', 'logs', 'plugins'].forEach((x) => {
 			if (!fs.existsSync(`./${x}`)) {
 				Deno.mkdirSync(`./${x}`);
@@ -48,6 +56,7 @@ export class DenoServer extends Server {
 			}
 		} catch (e) {
 			this.logger.error('Server icon (server-icon.png) is invalid!');
+			this.logger.error(e);
 		}
 
 		const listener = Deno.listen({ port: this.config.port });
@@ -84,12 +93,12 @@ export class DenoServer extends Server {
 							bufWriter,
 							headers,
 						})
-						.then((ws) => {
+						.then((ws: wss.WebSocket) => {
 							const x = new VoxelSrvConnectionHandler(ws, this);
 							x._connect = (y) => this.connectPlayer(x, 'VoxelSrv', y ?? undefined);
 							x._authenticate(this);
 						})
-						.catch(async (err) => {
+						.catch(async () => {
 							await req.respond({ status: 400 });
 						});
 				}
@@ -129,7 +138,7 @@ export class DenoServer extends Server {
 
 		const f = () => {
 			const players: string[] = [];
-			Object.values(this.players).forEach((p) => players.push(p.username));
+			Object.values(this.players).forEach((p) => players.push((<Player>p).username));
 
 			/*try {
 				if (this.config.publicOnMineOnline) {
@@ -173,7 +182,7 @@ export class DenoServer extends Server {
 						)}&public=${this.config.publicOnBetaCraft ? 'True' : 'False'}&version=7&salt=${this._saltBetaCraft}&users=${players.length}`
 					);
 				}
-			} catch (e) {
+			} catch (_e) {
 				this.logger.warn(`Couldn't send heartbeat to BetaCraft!`);
 			}
 
@@ -183,7 +192,7 @@ export class DenoServer extends Server {
 
 					fetch(`https://voxelsrv.pb4.eu/api/addServer?ip=${address}&type=1`);
 				}
-			} catch (e) {
+			} catch (_e) {
 				this.logger.warn(`Couldn't send heartbeat to VoxelSrv!`);
 			}
 		};
@@ -211,11 +220,11 @@ export class DenoServer extends Server {
 			if (hash.toString() == data.secret) {
 				subService = 'MineOnline';
 			} else {*/
-				const hash = createHash('md5');
-				hash.update(this._saltBetaCraft + data.username);
-				if (hash.toString() == data.secret) {
-					subService = 'Betacraft';
-				}
+			const hash = createHash('md5');
+			hash.update(this._saltBetaCraft + data.username);
+			if (hash.toString() == data.secret) {
+				subService = 'Betacraft';
+			}
 			//}
 
 			if (subService != null) {
@@ -400,6 +409,18 @@ const fileHelper: IFileHelper = {
 		}
 	},
 
+	deleteConfig(namespace: string) {
+		try {
+			if (this.existConfig(namespace)) {
+				Deno.removeSync(`./config/${namespace}.json`);
+			}
+			return true;
+		} catch (e) {
+			logger.error(e);
+			return false;
+		}
+	},
+
 	getConfig(namespace: string) {
 		try {
 			if (!fs.existsSync(`./config/${namespace}.json`)) {
@@ -436,6 +457,18 @@ const fileHelper: IFileHelper = {
 				return true;
 			}
 			return false;
+		} catch (e) {
+			logger.error(e);
+			return false;
+		}
+	},
+
+	deleteWorld(name: string) {
+		try {
+			if (this.existWorld(name)) {
+				Deno.removeSync(`./world/${name}.cw`);
+			}
+			return true;
 		} catch (e) {
 			logger.error(e);
 			return false;
@@ -496,6 +529,18 @@ const fileHelper: IFileHelper = {
 			file.writeSync(textEncoder.encode(JSON.stringify(player)));
 
 			file.close();
+			return true;
+		} catch (e) {
+			logger.error(e);
+			return false;
+		}
+	},
+
+	deletePlayer(uuid: string) {
+		try {
+			if (this.existPlayer(uuid)) {
+				Deno.removeSync(`./player/${uuid}.json`);
+			}
 			return true;
 		} catch (e) {
 			logger.error(e);

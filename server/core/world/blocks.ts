@@ -1,4 +1,5 @@
 import type { Holder } from '../types.ts';
+import { World } from './world.ts';
 
 export class Block {
 	unbreakable: boolean;
@@ -6,26 +7,72 @@ export class Block {
 	type: BlockTypes;
 	solid: boolean;
 	placeable: boolean;
+	passLight: boolean;
+	tickable = false;
 
-	constructor(id: number, placeable: boolean = true, type: BlockTypes = 'full', unbreakable: boolean = false) {
+	constructor(id: number, placeable: boolean = true, type: BlockTypes = 'full', unbreakable: boolean = false, passLight = false) {
 		this.numId = id;
 		this.type = type;
 		this.unbreakable = unbreakable;
 		this.solid = type == 'full' || type == 'slab';
 		this.placeable = placeable;
+		this.passLight = passLight;
+	}
+
+	update(_world: World, _x: number, _y: number, _z: number, _lazy: boolean, _tick: bigint): boolean {
+		return true;
+	}
+}
+
+export class GrassBlock {
+	unbreakable: boolean;
+	numId: number;
+	type: BlockTypes;
+	solid: boolean;
+	placeable: boolean;
+	passLight: boolean;
+	tickable = true;
+
+	constructor(id: number, placeable: boolean = true) {
+		this.numId = id;
+		this.type = 'full';
+		this.unbreakable = false;
+		this.solid = true;
+		this.placeable = placeable;
+		this.passLight = false;
+	}
+
+	update(world: World, x: number, y: number, z: number, _lazy: boolean, _tick: bigint) {
+		if (world.getBlock(x, y + 1, z)?.solid) {
+			world.setBlockId(x, y, z, blocks.dirt.numId);
+		} else {
+			for (let u = 0; u < 10; u++) {
+				const x2 = Math.floor((Math.random() - 0.5) * 6);
+				const y2 = Math.floor((Math.random() - 0.5) * 4);
+				const z2 = Math.floor((Math.random() - 0.5) * 6);
+
+				const tmp = world.getBlock(x + x2, y + y2 + 1, z + z2);
+				if (world.getBlockId(x + x2, y + y2, z + z2) == blocks.dirt.numId && (!tmp?.solid || tmp.passLight)) {
+					world.setBlockId(x + x2, y + y2, z + z2, this.numId);
+					break;
+				}
+			}
+		}
+
+		return true;
 	}
 }
 
 export type BlockTypes = 'full' | 'fluid' | 'plant' | 'slab' | 'air';
 
 export const blocks = {
-	air: new Block(0, true, 'air'),
+	air: new Block(0, true, 'air', false, true),
 	stone: new Block(1),
-	grass: new Block(2, false),
+	grass: new GrassBlock(2, false),
 	dirt: new Block(3),
 	cobblestone: new Block(4),
 	planks: new Block(5),
-	sapling: new Block(6, true, 'plant'),
+	sapling: new Block(6, true, 'plant', false, this),
 	bedrock: new Block(7, false, 'full', true),
 	flowingWater: new Block(8, false, 'fluid', false),
 	water: new Block(9, false, 'fluid', false),
@@ -37,9 +84,9 @@ export const blocks = {
 	ironOre: new Block(15),
 	coalOre: new Block(16),
 	wood: new Block(17),
-	leaves: new Block(18),
+	leaves: new Block(18, true, 'full', false, true),
 	sponge: new Block(19),
-	glass: new Block(20),
+	glass: new Block(20, true, 'full', false, true),
 	red: new Block(21),
 	orange: new Block(22),
 	yellow: new Block(23),
@@ -56,10 +103,10 @@ export const blocks = {
 	black: new Block(34),
 	gray: new Block(35),
 	white: new Block(36),
-	dantelion: new Block(37, true, 'plant'),
-	rose: new Block(38, true, 'plant'),
-	brownMushroom: new Block(39, true, 'plant'),
-	redMushroom: new Block(40, true, 'plant'),
+	dantelion: new Block(37, true, 'plant', false, true),
+	rose: new Block(38, true, 'plant', false, true),
+	brownMushroom: new Block(39, true, 'plant', false, true),
+	redMushroom: new Block(40, true, 'plant', false, true),
 	gold: new Block(41),
 	iron: new Block(42),
 	doubleSlab: new Block(43),
@@ -123,6 +170,8 @@ export const blockIds = {
 	moss: 48,
 	obsidian: 49,
 };
+
+export const lastBlockId = 49;
 
 export const blocksIdsToName: Record<number, string> = {};
 

@@ -5,7 +5,7 @@ export function makeMurmur(seed: number) {
     const c2 = 0x1b873593
     const maxInt = Math.pow(2, 32)
 
-    return function murmur32(...args: number[]) {
+    return function murmur32(..._args: number[]) {
 
         var numargs = arguments.length
         var h1 = seed

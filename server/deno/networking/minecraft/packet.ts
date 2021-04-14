@@ -7,13 +7,14 @@ export class PacketReader {
 	buffer: Uint8Array;
 	view: DataView;
 	pos: number;
+	compressed: boolean;
 	readonly lenght: number;
 
 	constructor(buffer: Uint8Array, compressed = false) {
 		this.buffer = buffer;
 		this.view = new DataView(buffer.buffer);
 		this.pos = 0;
-
+		this.compressed = compressed;
 		this.lenght = this.readVarInt();
 	}
 

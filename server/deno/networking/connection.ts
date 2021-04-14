@@ -101,7 +101,7 @@ export class TpcConnectionHandler extends ConnectionHandler {
 		try {
 			read = await conn.read(this._buffer);
 			if (read === null) return null;
-		} catch (error) {
+		} catch (_error) {
 			return null;
 		}
 
@@ -250,6 +250,7 @@ export class VoxelSrvConnectionHandler extends ConnectionHandler {
 				}
 			}
 		} catch (err) {
+			this._server?.logger.conn(`Error occured with connection ${this.ip}: ${err}` )
 			if (!sock.isClosed) {
 				this.close();
 			}

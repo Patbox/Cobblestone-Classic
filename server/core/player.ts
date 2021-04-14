@@ -81,7 +81,7 @@ export class Player {
 
 	/**
 	 * Changes player's world to provided one;
-	 * 
+	 *
 	 * @param world World instacne
 	 */
 	async changeWorld(world: World) {
@@ -103,7 +103,7 @@ export class Player {
 
 	/**
 	 * Telepors player to provided location
-	 * 
+	 *
 	 * @param world World instance
 	 * @param x X position
 	 * @param y Y position
@@ -130,7 +130,7 @@ export class Player {
 
 	/**
 	 * Sends message to player
-	 * 
+	 *
 	 * @param message Formatted message
 	 * @param player Player sending it (optional)
 	 */
@@ -140,7 +140,7 @@ export class Player {
 
 	/**
 	 * Executes command as player
-	 * 
+	 *
 	 * @param command command without /
 	 * @returns Boolean indicating, if executing was successful
 	 */
@@ -167,7 +167,7 @@ export class Player {
 
 	/**
 	 * Disconnects player
-	 * 
+	 *
 	 * @param reason Reason why player was disconnected (optional)
 	 */
 	disconnect(reason?: string) {
@@ -183,7 +183,7 @@ export class Player {
 
 	/**
 	 * Sets player's permission
-	 * 
+	 *
 	 * @param permission Permission
 	 * @param value Boolean for setting, null for deletion
 	 */
@@ -197,7 +197,7 @@ export class Player {
 
 	/**
 	 * Checks if player has permission
-	 * 
+	 *
 	 * @param permission Permission
 	 * @param value Boolean if it's set, null if it isn't (aka default)
 	 */
@@ -232,7 +232,7 @@ export class Player {
 
 	/**
 	 * Checks if player has permission, excluding wildcart ones
-	 * 
+	 *
 	 * @param permission Permission
 	 * @param value Boolean if it's set, null if it isn't (aka default)
 	 */
@@ -252,9 +252,9 @@ export class Player {
 		return null;
 	}
 
-	/** 
+	/**
 	 * Do not use unless you know what are you doing
-	 * 
+	 *
 	 * Removes player for server
 	 */
 	_removeFromServer() {
@@ -267,7 +267,7 @@ export class Player {
 
 	/**
 	 * Returns player's data (same format as for saves)
-	 * 
+	 *
 	 * @returns PlayerData
 	 */
 	getPlayerData(): PlayerData {
@@ -287,14 +287,14 @@ export class Player {
 
 	/**
 	 * Returns player's display name
-	 * 
+	 *
 	 * @returns Display name
 	 */
 	getDisplayName(): string {
 		return this.displayName ?? this.username;
 	}
 
-	/** 
+	/**
 	 * Do not use unless you know what are you doing
 	 */
 	_action_move(x: number, y: number, z: number, yaw: number, pitch: number) {
@@ -328,43 +328,51 @@ export class Player {
 		}
 	}
 
-	/** 
+	/**
 	 * Do not use unless you know what are you doing
 	 */
 	_action_block_place(x: number, y: number, z: number, block: number) {
 		if (!this.world.isInBounds(x, y, z) || !(<Holder<Block>>blocks)[blocksIdsToName[block]].placeable) {
-			this._connectionHandler.setBlock(x, y, z, this.world.getBlock(x, y, z));
+			this._connectionHandler.setBlock(x, y, z, this.world.getBlockId(x, y, z));
 			return;
 		}
 
 		const result = this._server.event.PlayerBlockPlace._emit({ player: this, position: [x, y, z], block, world: this.world });
 
 		if (result) {
-			this.world.setBlock(x, y, z, block);
+			this.world.setBlockId(x, y, z, block);
+			this.world.lazyTickBlock(x, y, z);
 		} else {
-			this._connectionHandler.setBlock(x, y, z, this.world.getBlock(x, y, z));
+			this._connectionHandler.setBlock(x, y, z, this.world.getBlockId(x, y, z));
 		}
 	}
 
-	/** 
+	/**
 	 * Do not use unless you know what are you doing
 	 */
 	_action_block_break(x: number, y: number, z: number, block: number) {
 		if (!this.world.isInBounds(x, y, z) || !(<Holder<Block>>blocks)[blocksIdsToName[block]]?.placeable) {
-			this._connectionHandler.setBlock(x, y, z, this.world.getBlock(x, y, z));
+			this._connectionHandler.setBlock(x, y, z, this.world.getBlockId(x, y, z));
 			return;
 		}
 
 		const result = this._server.event.PlayerBlockBreak._emit({ player: this, position: [x, y, z], block, world: this.world });
 
 		if (result) {
-			this.world.setBlock(x, y, z, 0);
+			this.world.setBlockId(x, y, z, 0);
+			for (let x2 = -1; x2 <= 1; x2++) {
+				for (let y2 = -1; y2 <= 1; y2++) {
+					for (let z2 = -1; z2 <= 1; z2++) {
+						this.world.tickBlock(x + x2, y + y2, z + z2);
+					}
+				}
+			}
 		} else {
-			this._connectionHandler.setBlock(x, y, z, this.world.getBlock(x, y, z));
+			this._connectionHandler.setBlock(x, y, z, this.world.getBlockId(x, y, z));
 		}
 	}
 
-	/** 
+	/**
 	 * Do not use unless you know what are you doing
 	 */
 	_action_chat_message(message: string) {
@@ -384,7 +392,7 @@ export class Player {
 
 	/**
 	 * Allows to check if player colides with other player
-	 * 
+	 *
 	 * @param player Other player
 	 * @returns Boolean indicating, if player colides
 	 */
@@ -396,7 +404,7 @@ export class Player {
 		return this._checkColision(player);
 	}
 
-	/** 
+	/**
 	 * Do not use unless you know what are you doing
 	 * Use `Player.checkColision` instead
 	 */
@@ -431,7 +439,6 @@ export interface PlayerData {
 	displayName: Nullable<string>;
 }
 
-
 /**
  * VirtualPlayerHolder allows to modify some of player data while player is offline
  * It still works for online players
@@ -460,9 +467,11 @@ export class VirtualPlayerHolder {
 		this.joinEvent = (ev: EventContext<event.PlayerConnect>) => {
 			if (ev.value.player.uuid == uuid) {
 				this.player = ev.value.player;
-				this.player.groups = this.playerData.groups;
-				this.player.permissions = this.playerData.permissions;
-				this.player.displayName = this.playerData.displayName;
+				if (this.player) {
+					this.player.groups = this.playerData.groups;
+					this.player.permissions = this.playerData.permissions;
+					this.player.displayName = this.playerData.displayName;
+				}
 			}
 		};
 
@@ -476,7 +485,6 @@ export class VirtualPlayerHolder {
 		this._server.event.PlayerConnect.on(this.joinEvent);
 		this._server.event.PlayerDisconnect.on(this.leaveEvent);
 	}
-
 
 	/**
 	 * Saves all changes
@@ -493,7 +501,7 @@ export class VirtualPlayerHolder {
 
 	/**
 	 * Sets player's permission
-	 * 
+	 *
 	 * @param permission Permission
 	 * @param value Boolean for setting, null for deletion
 	 */
@@ -509,7 +517,7 @@ export class VirtualPlayerHolder {
 
 	/**
 	 * Sets player's permission
-	 * 
+	 *
 	 * @param permission Permission
 	 * @param value Boolean for setting, null for deletion
 	 */
@@ -544,7 +552,7 @@ export class VirtualPlayerHolder {
 
 	/**
 	 * Checks if player has permission, excluding wildcart ones
-	 * 
+	 *
 	 * @param permission Permission
 	 * @param value Boolean if it's set, null if it isn't (aka default)
 	 */
@@ -571,8 +579,8 @@ export class VirtualPlayerHolder {
 
 	/**
 	 * Adds player to group
-	 * 
-	 * @param group 
+	 *
+	 * @param group
 	 */
 	addGroup(group: string) {
 		this.player ? arrayAddOnce(this.player.groups, group) : arrayAddOnce(this.playerData.groups, group);
@@ -580,8 +588,8 @@ export class VirtualPlayerHolder {
 
 	/**
 	 * Removes player from group
-	 * 
-	 * @param group 
+	 *
+	 * @param group
 	 */
 	removeGroup(group: string) {
 		this.player ? arrayRemove(this.player.groups, group) : arrayRemove(this.playerData.groups, group);
@@ -598,7 +606,7 @@ export class VirtualPlayerHolder {
 	 * Sets Player's display name
 	 */
 	setDisplayName(name: string) {
-		this.player ? this.player.displayName = name : this.playerData.displayName = name;
+		this.player ? (this.player.displayName = name) : (this.playerData.displayName = name);
 	}
 
 	/**

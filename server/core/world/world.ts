@@ -1,11 +1,11 @@
 import type { Player } from '../player.ts';
 import type { Server } from '../server.ts';
-import type { Holder, Nullable, Services, XYZ } from '../types.ts';
+import type { Nullable, Services, XYZ } from '../types.ts';
 
 import { Byte, decode as decodeNBT, encode as encodeNBT, Short, Tag, TagObject } from '../../libs/nbt/index.ts';
 
 import { uuid } from '../deps.ts';
-import { blocks, Block, blocksIdsToName } from './blocks.ts';
+import { Block, lastBlockId } from './blocks.ts';
 
 export class World {
 	readonly blockData: Uint8Array;
@@ -37,6 +37,8 @@ export class World {
 
 	_metadata: Tag;
 	readonly _server: Server;
+	protected blocksToUpdate: [number, number, number, Block][] = [];
+	protected lazyBlocksToUpdate: [number, number, number, Block][] = [];
 
 	constructor(fileName: string, data: WorldData, server: Server) {
 		this._server = server;
@@ -65,9 +67,14 @@ export class World {
 		this._metadata = data._metadata ?? {};
 	}
 
-	setBlock(x: number, y: number, z: number, block: number): boolean {
+	setBlock(x: number, y: number, z: number, block: Block): boolean {
+		return this.setBlockId(x, y, z, block.numId);
+	}
+
+	setBlockId(x: number, y: number, z: number, block: number): boolean {
 		if (this.isInBounds(x, y, z)) {
-			this.rawSetBlock(x, y, z, block);
+			block = block > lastBlockId || block < 0 ? 1 : block;
+			this._rawSetBlockId(x, y, z, block);
 			this.players.forEach((p) => p._connectionHandler.setBlock(x, y, z, block));
 			return true;
 		} else {
@@ -75,12 +82,16 @@ export class World {
 		}
 	}
 
-	rawSetBlock(x: number, y: number, z: number, block: number) {
-		this.blockData[4 + x + this.size[0] * (z + this.size[2] * y)] = block;
+	_rawSetBlockId(x: number, y: number, z: number, block: number) {
+		this.blockData[this.getIndex(x, y, z)] = block;
 	}
 
-	getBlock(x: number, y: number, z: number): number {
-		return this.isInBounds(x, y, z) ? this.blockData[4 + x + this.size[0] * (z + this.size[2] * y)] : 0;
+	getBlock(x: number, y: number, z: number): Nullable<Block> {
+		return this._server.getBlock(this.getBlockId(x, y, z));
+	}
+
+	getBlockId(x: number, y: number, z: number): number {
+		return this.isInBounds(x, y, z) ? this.blockData[this.getIndex(x, y, z)] : 0;
 	}
 
 	isInBounds(x: number, y: number, z: number): boolean {
@@ -94,12 +105,62 @@ export class World {
 	getHighestBlock(x: number, z: number, nonSolid = false): number {
 		for (let y = this.size[1] - 1; y > 0; y--) {
 			const block = this.getBlock(x, y, z);
-			if ((nonSolid && block != 0) || (<Holder<Block>>blocks)[blocksIdsToName[block]].solid) {
+			if ((nonSolid && block?.numId != 0) || block?.solid) {
 				return y;
 			}
 		}
 
 		return 0;
+	}
+
+	teleportAllPlayers(world: World, x?: number, y?: number, z?: number, yaw?: number, pitch?: number) {
+		if (z != undefined && y != undefined && x != undefined) {
+			this.players.forEach((p) => p.teleport(world, x, y, z, yaw, pitch));
+		} else {
+			this.players.forEach((p) => p.changeWorld(world));
+		}
+	}
+
+	tickBlock(x: number, y: number, z: number) {
+		const b = this.getBlock(x, y, z);
+
+		if (b && b.tickable) {
+			this.blocksToUpdate.push([x, y, z, b]);
+		}
+	}
+
+	lazyTickBlock(x: number, y: number, z: number) {
+		const b = this.getBlock(x, y, z);
+
+		if (b && b.tickable) {
+			this.lazyBlocksToUpdate.push([x, y, z, b]);
+		}
+	}
+
+	_tick(tick: bigint) {
+		for (let i = 0; i < 1000; i++) {
+			const x = Math.floor(Math.random() * this.size[0]);
+			const y = Math.floor(Math.random() * this.size[1]);
+			const z = Math.floor(Math.random() * this.size[2]);
+			this.tickBlock(x, y, z);
+		}
+
+		this.blocksToUpdate = this.blocksToUpdate.filter(([x, y, z, block]) => !block.update(this, x, y, z, false, tick));
+
+		if (tick % 20n == 0n) {
+			const b = this.lazyBlocksToUpdate.shift();
+
+			if (b) {
+				const [x, y, z, block] = b;
+				if (!block.update(this, x, y, z, true, tick)) {
+					this.lazyBlocksToUpdate.push(b);
+				}
+			}
+		}
+	}
+
+	getIndex(x: number, y: number, z: number): number {
+		return 4 + x + this.size[0] * (z + this.size[2] * y);
 	}
 
 	_addPlayer(player: Player) {
@@ -176,12 +237,13 @@ export class World {
 
 			const fallback: Uint8Array | undefined = <Uint8Array>(<TagObject>(<TagObject>metadata.CPE)?.CustomBlocks)?.Fallback;
 
-			const getBlockAt =
-				blocks2 != undefined
-					? (x: number) => {
-							return blocks[x] | (blocks2[x] << 8);
-						}
-					: (x: number) => blocks[x];
+			let getBlockAt = (x: number) => blocks[x];
+
+			if (blocks2) {
+				getBlockAt = (x: number) => {
+					return blocks[x] | (blocks2[x] << 8);
+				};
+			}
 
 			if (fallback != undefined) {
 				for (let x = 0; x < blocks.length; x++) {
@@ -189,6 +251,12 @@ export class World {
 				}
 			} else {
 				blockData.set(blocks, 4);
+			}
+
+			for (let x = 4; x < blockData.length; x++) {
+				if (blockData[x] > lastBlockId) {
+					blockData[x] = 1;
+				}
 			}
 
 			return {
@@ -213,7 +281,7 @@ export class World {
 
 				_metadata: metadata,
 			};
-		} catch (e) {
+		} catch (_e) {
 			return null;
 		}
 	}

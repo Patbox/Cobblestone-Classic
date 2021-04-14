@@ -461,6 +461,24 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 								ctx.send(`&aChanged worlds spawnpoint to ${world.spawnPoint.join(', ')}.`);
 							}
 							break;
+						case 'delete':
+							{
+								if (!ctx.checkPermission('commands.world.delete')) throw 'perm';
+								if (args.length != 3) throw 'ia';
+
+								const name = args[2];
+
+								ctx.send('&yWorld creation started! It can take a while...');
+
+								const world = server.deleteWorld(name);
+								if (world) {
+									ctx.send('&aWorld deleted!');
+									return;
+								} else {
+									ctx.send("&cCouldn't delete this world! It's protected or invalid!");
+								}
+							}
+							break;
 					}
 				} else {
 					throw 'ia';
