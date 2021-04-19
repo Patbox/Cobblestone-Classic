@@ -43,10 +43,11 @@ export class GrassBlock {
 	}
 
 	update(world: World, x: number, y: number, z: number, _lazy: boolean, _tick: bigint) {
-		if (world.getBlock(x, y + 1, z)?.solid) {
+		const upBlock = world.getBlock(x, y + 1, z);
+		if (!upBlock?.passLight) {
 			world.setBlockId(x, y, z, blocks.dirt.numId);
 		} else {
-			for (let u = 0; u < 10; u++) {
+			for (let u = 0; u < 4; u++) {
 				const x2 = Math.floor((Math.random() - 0.5) * 6);
 				const y2 = Math.floor((Math.random() - 0.5) * 4);
 				const z2 = Math.floor((Math.random() - 0.5) * 6);

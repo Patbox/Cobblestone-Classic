@@ -1,9 +1,8 @@
 import { ConnectionHandler } from './networking/connection.ts';
 import { Server } from './server.ts';
-import { Holder, Nullable, Services } from './types.ts';
+import { Holder, Nullable, Position, Services } from './types.ts';
 import { World } from './world/world.ts';
 import * as vec from '../libs/vec.ts';
-import { Block, blocks, blocksIdsToName } from './world/blocks.ts';
 import * as event from './events.ts';
 import { EventContext } from '../libs/emitter.ts';
 
@@ -69,9 +68,9 @@ export class Player {
 		} else {
 			this.world = server.worlds[server.config.defaultWorldName];
 
-			this.position = this.world.spawnPoint;
-			this.yaw = this.world.spawnPointYaw;
-			this.pitch = this.world.spawnPointPitch;
+			this.position = [this.world.spawnPoint.x, this.world.spawnPoint.y, this.world.spawnPoint.z];
+			this.yaw = this.world.spawnPoint.yaw;
+			this.pitch = this.world.spawnPoint.pitch;
 			this.permissions = {};
 			this.groups = ['default'];
 		}
@@ -95,9 +94,9 @@ export class Player {
 
 			this.world._addPlayer(this);
 			this.isInWorld = true;
-			this.position = [...this.world.spawnPoint];
-			this.yaw = this.world.spawnPointYaw;
-			this.pitch = this.world.spawnPointPitch;
+			this.position = [this.world.spawnPoint.x, this.world.spawnPoint.y, this.world.spawnPoint.z];
+			this.yaw = this.world.spawnPoint.yaw;
+			this.pitch = this.world.spawnPoint.pitch;
 		}
 	}
 
@@ -112,7 +111,7 @@ export class Player {
 	 * @param pitch Player's pitch (optional)
 	 */
 	async teleport(world: World, x: number, y: number, z: number, yaw?: number, pitch?: number) {
-		const result = this._server.event.PlayerTeleport._emit({ player: this, position: [x, y, z], world, yaw, pitch });
+		const result = this._server.event.PlayerTeleport._emit({ player: this, position: { x, y, z, yaw: yaw ?? 0, pitch: pitch ?? 0 }, world });
 
 		if (result) {
 			if (this.world != world) {
@@ -240,8 +239,7 @@ export class Player {
 		if (this.permissions[permission] != null) {
 			return !!this.permissions[permission];
 		}
-
-		for (const groupName in this.groups) {
+		for (const groupName of this.groups) {
 			const x = this._server.groups[groupName]?.checkPermissionExact(permission);
 
 			if (x != null) {
@@ -295,6 +293,15 @@ export class Player {
 	}
 
 	/**
+	 * Returns player's position
+	 * 
+	 * @returns Position
+	 */
+	getPosition(): Position {
+		return { x: this.position[0], y: this.position[1], z: this.position[2], yaw: this.yaw, pitch: this.pitch };
+	}
+
+	/**
 	 * Do not use unless you know what are you doing
 	 */
 	_action_move(x: number, y: number, z: number, yaw: number, pitch: number) {
@@ -302,7 +309,7 @@ export class Player {
 			return;
 		}
 
-		const result = this._server.event.PlayerMove._emit({ player: this, position: [x, y, z], pitch, yaw });
+		const result = this._server.event.PlayerMove._emit({ player: this, position: { x, y, z, pitch, yaw } });
 
 		if (result) {
 			this.world._movePlayer(this, [x, y, z], yaw, pitch);
@@ -331,17 +338,26 @@ export class Player {
 	/**
 	 * Do not use unless you know what are you doing
 	 */
-	_action_block_place(x: number, y: number, z: number, block: number) {
-		if (!this.world.isInBounds(x, y, z) || !(<Holder<Block>>blocks)[blocksIdsToName[block]].placeable) {
+	_action_block_place(x: number, y: number, z: number, blockId: number) {
+		let block = this._server.getBlock(blockId);
+
+		if (!block || !this.world.isInBounds(x, y, z) || !block.placeable) {
 			this._connectionHandler.setBlock(x, y, z, this.world.getBlockId(x, y, z));
 			return;
 		}
 
-		const result = this._server.event.PlayerBlockPlace._emit({ player: this, position: [x, y, z], block, world: this.world });
+		if (block == this._server.blocks.slab && this.world.getBlockId(x, y - 1, z) == block.numId) {
+			this._connectionHandler.setBlock(x, y, z, this.world.getBlockId(x, y, z));
+
+			block = this._server.blocks.doubleSlab;
+			y = y - 1;
+		}
+
+		const result = this._server.event.PlayerBlockPlace._emit({ player: this, position: { x, y, z, yaw: 0, pitch: 0 }, block, world: this.world });
 
 		if (result) {
-			this.world.setBlockId(x, y, z, block);
-			this.world.lazyTickBlock(x, y, z);
+			this.world.setBlockId(x, y, z, block.numId);
+			this.world.lazyTickNeighborBlocksAndSelf(x, y, z);
 		} else {
 			this._connectionHandler.setBlock(x, y, z, this.world.getBlockId(x, y, z));
 		}
@@ -350,23 +366,19 @@ export class Player {
 	/**
 	 * Do not use unless you know what are you doing
 	 */
-	_action_block_break(x: number, y: number, z: number, block: number) {
-		if (!this.world.isInBounds(x, y, z) || !(<Holder<Block>>blocks)[blocksIdsToName[block]]?.placeable) {
+	_action_block_break(x: number, y: number, z: number, blockId: number) {
+		const block = this._server.getBlock(blockId);
+
+		if (!block || !this.world.isInBounds(x, y, z) || block.unbreakable) {
 			this._connectionHandler.setBlock(x, y, z, this.world.getBlockId(x, y, z));
 			return;
 		}
 
-		const result = this._server.event.PlayerBlockBreak._emit({ player: this, position: [x, y, z], block, world: this.world });
+		const result = this._server.event.PlayerBlockBreak._emit({ player: this, position: { x, y, z, yaw: 0, pitch: 0 }, block, world: this.world });
 
 		if (result) {
 			this.world.setBlockId(x, y, z, 0);
-			for (let x2 = -1; x2 <= 1; x2++) {
-				for (let y2 = -1; y2 <= 1; y2++) {
-					for (let z2 = -1; z2 <= 1; z2++) {
-						this.world.tickBlock(x + x2, y + y2, z + z2);
-					}
-				}
-			}
+			this.world.lazyTickNeighborBlocksAndSelf(x, y, z);
 		} else {
 			this._connectionHandler.setBlock(x, y, z, this.world.getBlockId(x, y, z));
 		}

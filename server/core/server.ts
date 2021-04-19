@@ -1,6 +1,6 @@
 import { Emitter } from '../libs/emitter.ts';
 import { Player, PlayerData } from './player.ts';
-import { World, WorldData, WorldGenerator } from './world/world.ts';
+import { PhysicsLevel, World, WorldData, WorldGenerator } from './world/world.ts';
 
 import * as event from './events.ts';
 import { AuthData, Holder, Command, GroupInterface, Plugin, Nullable, XYZ } from './types.ts';
@@ -14,7 +14,7 @@ export class Server {
 	// Main informations about server
 	static readonly softwareName = 'Cobblestone';
 	static readonly softwareId = 'cobblestone';
-	static readonly softwareVersion = '0.0.9';
+	static readonly softwareVersion = '0.0.10';
 
 	static readonly targetGame = 'Minecraft Classic';
 	static readonly targetVersion = '0.30c';
@@ -26,10 +26,10 @@ export class Server {
 	readonly targetGame = Server.targetGame;
 	readonly targetVersion = Server.targetVersion;
 	// Version of API, goes up when new methods are added
-	readonly _apiVersion = '0.0.9';
+	readonly _apiVersion = '0.0.10';
 
 	// Minimal compatible API
-	readonly _minimalApiVersion = '0.0.6';
+	readonly _minimalApiVersion = '0.0.10';
 
 	/**
 	 * Wrapper to access filesystem. Used mostly to abstract stuff
@@ -131,7 +131,13 @@ export class Server {
 				}
 				this.logger.debug(`Loaded groups`);
 			} else {
-				this.groups['default'] = new Group({ name: 'default', permissions: {} });
+				this.groups['default'] = new Group({ name: 'default', permissions: {
+					'commands.spawn': true,
+					'commands.main': true,
+					'commands.maps': true,
+					'commands.goto': true,
+					
+				} });
 				this.logger.debug(`Creating default group`);
 			}
 
@@ -148,7 +154,7 @@ export class Server {
 			setupGenerators(this);
 			this.logger.debug(`Default generators are setuped!`);
 
-			this.loadWorld(this.config.defaultWorldName) ?? this.createWorld(this.config.defaultWorldName, [256, 128, 256], this._generators['grasslands']);
+			this.loadWorld(this.config.defaultWorldName) ?? await this.createWorld(this.config.defaultWorldName, [256, 128, 256], this._generators['grasslands']);
 
 			Object.values(this.worlds).forEach((world) => {
 				this.files.saveWorld(`backup/${world.fileName}-${this.formatDate(new Date())}`, world);
@@ -233,7 +239,7 @@ export class Server {
 			clearInterval(this._autoSaveInterval);
 		} catch (e) {
 			this.logger.warn("Couldn't clear intervals!");
-			this.logger.warn(e)
+			this.logger.warn(e);
 		}
 
 		this.logger.log('&6Closing server...');
@@ -281,6 +287,9 @@ export class Server {
 			conn._clientPackets.PlayerIdentification.once(async ({ value: playerInfo }) => {
 				if (playerInfo.protocol != 0x07) {
 					conn.disconnect('Unsupported protocol!');
+					return;
+				} else if (playerInfo.username.length > 32 || playerInfo.username.length < 3) {
+					conn.disconnect('Invalid nickname!');
 					return;
 				}
 
@@ -438,34 +447,37 @@ export class Server {
 	 * @param player Creator of world (optional)
 	 * @returns Generated world or null (if it fails)
 	 */
-	createWorld(name: string, size: XYZ, generator: WorldGenerator, seed?: number, player?: Player): Nullable<World> {
+	async createWorld(name: string, size: XYZ, generator: WorldGenerator, seed?: number, player?: Player): Promise<Nullable<World>> {
 		try {
 			if (this.worlds[name] != undefined) {
 				return this.worlds[name];
 			}
+
+			const view = await generator.generate(size[0], size[1], size[2], seed);
 
 			const world = new World(
 				name.toLowerCase().replace(' ', '_'),
 				{
 					name,
 					size,
-					generator: { software: this.softwareName, type: generator.name },
+					generator: { software: generator.software, type: generator.name },
 					createdBy: {
 						service: player?.service ?? 'Unknown',
 						username: player?.username ?? `${this.softwareName} - ${generator.name}`,
 						uuid: player?.uuid ?? 'Unknown',
 					},
-					spawnPoint: [size[0] / 2, size[1] / 2 + 20, size[2] / 2],
+					spawnPoint: view.getSpawnPoint(),
+					physics: PhysicsLevel.FULL,
+					blockData: view.getRawBlockData()
 				},
 				this
 			);
 
-			generator.generate(world);
-			world.spawnPoint[1] = world.getHighestBlock(world.spawnPoint[0], world.spawnPoint[2], true);
+			world.spawnPoint.y = world.getHighestBlock(world.spawnPoint.x, world.spawnPoint.z, true);
 
 			this.worlds[name] = world;
 
-			this.saveWorld(world);
+			//this.saveWorld(world);
 
 			return world;
 		} catch (e) {
@@ -681,9 +693,11 @@ export class Server {
 	 * @param id Block id
 	 * @returns Block or null if invalid
 	 */
-	getBlock(id: number): Nullable<Block> {
-		return (<Holder<Block>>this.blocks)[this.blockIdToName[id]] ?? null;
+	static getBlock(id: number): Nullable<Block> {
+		return (<Holder<Block>>blocks)[blocksIdsToName[id]] ?? null;
 	}
+
+	getBlock = Server.getBlock;
 
 	/**
 	 * Formats date

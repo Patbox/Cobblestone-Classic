@@ -24,19 +24,27 @@ export class TpcConnectionHandler extends ConnectionHandler {
 	}
 
 	async _send(packet: Uint8Array) {
-		await this._conn?.write(packet);
+		try {
+			await this._conn?.write(packet);
+		} catch (e) {
+			this.handleError(e);
+		}
 	}
 
 	protected async loop(conn: Deno.Conn): Promise<void> {
-		for (;;) {
-			const chunks = await this.read(conn);
-			if (chunks === null) break;
+		try {
+			for (;;) {
+				const chunks = await this.read(conn);
+				if (chunks === null) break;
 
-			if (this._isClassic) {
-				this._clientPackets._decode(chunks);
-			} else {
-				this.checkIfClassic(chunks);
+				if (this._isClassic) {
+					this._clientPackets._decode(chunks);
+				} else {
+					this.checkIfClassic(chunks);
+				}
 			}
+		} catch (e) {
+			this.handleError(e);
 		}
 
 		this.close();
@@ -109,7 +117,7 @@ export class TpcConnectionHandler extends ConnectionHandler {
 		return bytes;
 	}
 
-	protected close(): void {
+	protected close(triggerDisconnect = true): void {
 		if (this._conn === null) {
 			return;
 		}
@@ -118,7 +126,9 @@ export class TpcConnectionHandler extends ConnectionHandler {
 			this._conn?.close();
 		} finally {
 			this._conn = null;
-			this.disconnect('');
+			if (triggerDisconnect) {
+				this.disconnect('');
+			}
 		}
 	}
 }
@@ -250,10 +260,7 @@ export class VoxelSrvConnectionHandler extends ConnectionHandler {
 				}
 			}
 		} catch (err) {
-			this._server?.logger.conn(`Error occured with connection ${this.ip}: ${err}` )
-			if (!sock.isClosed) {
-				this.close();
-			}
+			this.handleError(err);
 		}
 	}
 

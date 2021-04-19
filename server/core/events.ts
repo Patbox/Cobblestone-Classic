@@ -1,4 +1,6 @@
 import { Player } from './player.ts';
+import { Position } from "./types.ts";
+import { Block } from "./world/blocks.ts";
 import { World } from './world/world.ts';
 
 export interface PlayerConnect {
@@ -18,9 +20,7 @@ export interface PlayerChangeWorld {
 
 export interface PlayerMove {
 	player: Player;
-	position: [number, number, number];
-	pitch: number;
-	yaw: number;
+	position: Position;
 }
 
 export interface PlayerColides {
@@ -30,10 +30,8 @@ export interface PlayerColides {
 
 export interface PlayerTeleport {
 	player: Player;
-	position: [number, number, number];
+	position: Position;
 	world: World;
-	yaw?: number;
-	pitch?: number;
 }
 
 export interface PlayerMessage {
@@ -48,7 +46,7 @@ export interface PlayerCommand {
 
 export interface PlayerChangeBlock {
 	player: Player;
-	position: [number, number, number];
-	block: number;
+	position: Position;
+	block: Block;
 	world: World;
 }

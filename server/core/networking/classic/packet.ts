@@ -77,10 +77,6 @@ export class PacketWriter {
 	writeString(n: string) {
 		const b = textEncoder.encode(n.replaceAll(classicTextRegex, '_'));
 
-		if (b.length > 64) {
-			throw 'Too long string!';
-		}
-
 		for (let x = 0; x < 64; x++) {
 			this.buffer[this.pos + x] = b[x] ?? 0x20;
 		}

@@ -3,6 +3,14 @@ import { Server } from './server.ts';
 
 export type XYZ = [number, number, number];
 
+export interface Position {
+	x: number;
+	y: number;
+	z: number;
+	yaw: number;
+	pitch: number;
+}
+
 export type Nullable<T> = null | T;
 
 export type Services = 'Unknown' | 'Minecraft' | 'VoxelSrv' | 'ClassiCube';
@@ -59,3 +67,39 @@ export interface HelpPage {
 	title: string;
 	lines: string[];
 }
+
+
+export enum BlockShape {
+	CUBE,
+	CROSS,
+	SLAB_BOTTOM,
+	SLAB_TOP,
+	STAIR_N,
+	STAIR_S,
+	STAIR_W,
+	STAIR_E,
+	FENCE,
+
+	CUSTOM = 256
+}
+
+export enum BlockColor {
+	WHITE,
+	BLACK,
+	DARK_BLUE,
+	DARK_GREEN,
+	DARK_AQUA,
+	DARK_RED,
+	DARK_PURPLE,
+	GOLD,
+	GRAY,
+	DARK_GRAY,
+	BLUE,
+	GREEN,
+	AQUA,
+	RED,
+	PINK,
+	YELLOW
+}
+
+export type BlockMap = Record<string, {numId: number, inGameName: string, solid: boolean, shape: BlockShape}>;

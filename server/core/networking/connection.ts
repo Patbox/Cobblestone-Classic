@@ -54,43 +54,58 @@ export class ConnectionHandler {
 
 	sendServerInfo(server: Server) {
 		this._server = server;
-		this._send(
-			serverPackets.encodeServerIdentification({
-				name: this._server.config.serverName,
-				motd: this._server.config.serverMotd,
-				protocol: 7,
-				userType: 0,
-			})
-		);
+		try {
+			this._send(
+				serverPackets.encodeServerIdentification({
+					name: this._server.config.serverName,
+					motd: this._server.config.serverMotd,
+					protocol: 7,
+					userType: 0,
+				})
+			);
+		} catch (e) {
+			this.handleError(e);
+		}
 	}
 
 	async sendWorld(world: World) {
-		this.sendingWorld = true;
-		await this._send(serverPackets.encodeLevelInitialize());
+		try {
+			this.sendingWorld = true;
+			await this._send(serverPackets.encodeLevelInitialize());
 
-		const compressedMap = gzip(world.blockData);
+			const blockData = new Uint8Array(world.blockData.length + 4);
+			const view = new DataView(blockData.buffer, blockData.byteOffset, blockData.byteLength);
+			view.setUint32(0, world.blockData.length);
+			blockData.set(world.blockData, 4);
 
-		if (compressedMap == undefined) {
-			return;
+			const compressedMap = gzip(blockData);
+
+			if (compressedMap == undefined) {
+				return;
+			}
+
+			for (let i = 0; i < compressedMap.length; i += 1024) {
+				const x = compressedMap.slice(i, Math.min(i + 1024, compressedMap.length));
+				const packet = serverPackets.encodeLevelData({
+					chunkData: x,
+					chunkLenght: x.length,
+					complite: i == 0 ? 0 : Math.ceil((i / compressedMap.length) * 100),
+				});
+
+				await this._send(packet);
+				await new Promise((res) => {
+					setTimeout(() => res(null), 5);
+				});
+			}
+
+			await this._send(serverPackets.encodeLevelFinalize({ x: world.size[0], y: world.size[1], z: world.size[2] }));
+			this.sendingWorld = false;
+			world.players.forEach((p) => this.sendSpawnPlayer(p));
+
+			this._player ? this.sendSpawnPlayer(this._player) : null;
+		} catch (e) {
+			this.handleError(e);
 		}
-
-		for (let i = 0; i < compressedMap.length; i += 1024) {
-			const x = compressedMap.slice(i, Math.min(i + 1024, compressedMap.length));
-			const packet = serverPackets.encodeLevelData({
-				chunkData: x,
-				chunkLenght: x.length,
-				complite: i == 0 ? 0 : Math.ceil((i / compressedMap.length) * 100),
-			});
-
-			await this._send(packet);
-			await new Promise((res) => {setTimeout(() => res(null), 5) }) 
-		}
-
-		await this._send(serverPackets.encodeLevelFinalize({ x: world.size[0], y: world.size[1], z: world.size[2] }));
-		this.sendingWorld = false;
-		world.players.forEach((p) => this.sendSpawnPlayer(p));
-
-		this._player ? this.sendSpawnPlayer(this._player) : null;
 	}
 
 	setBlock(x: number, y: number, z: number, block: number): void {
@@ -109,19 +124,23 @@ export class ConnectionHandler {
 	}
 
 	sendMessage(player: Nullable<Player>, text: string) {
-		const pid = player != null ? player.numId : 0;
-		if (text.length > 64) {
-			let temp = text.substr(63, text.length - 63);
+		try {
+			const pid = player != null ? player.numId : 0;
+			if (text.length > 64) {
+				let temp = text.substr(63, text.length - 63);
 
-			this._send(serverPackets.encodeMessage({ player: pid, message: text.substr(0, 62) }));
+				this._send(serverPackets.encodeMessage({ player: pid, message: text.substr(0, 62) }));
 
-			while (temp.length != 0) {
-				this._send(serverPackets.encodeMessage({ player: pid, message: temp.substr(0, 62) }));
+				while (temp.length != 0) {
+					this._send(serverPackets.encodeMessage({ player: pid, message: temp.substr(0, 62) }));
 
-				temp = temp.substr(63, text.length - 63);
+					temp = temp.substr(63, text.length - 63);
+				}
+			} else {
+				this._send(serverPackets.encodeMessage({ player: pid, message: text }));
 			}
-		} else {
-			this._send(serverPackets.encodeMessage({ player: pid, message: text }));
+		} catch (e) {
+			this.handleError(e);
 		}
 	}
 
@@ -136,7 +155,11 @@ export class ConnectionHandler {
 				this._server?.logger.conn(`User ${this.ip}:${this.port} (${this._player.username}) disconnected! Reason ${message}`);
 			}
 			this.isConnected = false;
-			this._send(serverPackets.encodeDisconnect({ reason: message }));
+			try {
+				this._send(serverPackets.encodeDisconnect({ reason: message }));
+			} catch (e) {
+				this.handleError(e, false);
+			}
 		}
 	}
 
@@ -189,6 +212,13 @@ export class ConnectionHandler {
 				player: pid,
 			})
 		);
+	}
+
+	protected handleError(e: unknown, triggerDisconnect = true) {
+		this._server.logger.conn(`Error occured with connection ${this.ip}:${this.port} (${this._player?.uuid ?? 'unknown'})! ${e}`);
+		if (triggerDisconnect) {
+			this.disconnect(`${e}`);
+		}
 	}
 }
 

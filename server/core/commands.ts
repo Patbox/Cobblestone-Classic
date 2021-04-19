@@ -136,7 +136,7 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 
 			if (args.length == 1 && ctx.player) {
 				const world = ctx.player.world;
-				ctx.player.teleport(world, world.spawnPoint[0], world.spawnPoint[1], world.spawnPoint[2], world.spawnPointYaw, world.spawnPointPitch);
+				ctx.player.teleport(world, world.spawnPoint.x, world.spawnPoint.y, world.spawnPoint.z, world.spawnPoint.yaw, world.spawnPoint.pitch);
 
 				ctx.send('&aTeleported to spawn!');
 			} else if (args.length == 2 && ctx.player) {
@@ -152,7 +152,7 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 				const player = server.players[server.getPlayerIdFromName(args[2]) ?? ''] ?? null;
 
 				if (world && player) {
-					player.teleport(world, world.spawnPoint[0], world.spawnPoint[1], world.spawnPoint[2], world.spawnPointYaw, world.spawnPointPitch);
+					player.teleport(world, world.spawnPoint.x, world.spawnPoint.y, world.spawnPoint.z, world.spawnPoint.yaw, world.spawnPoint.pitch);
 					ctx.send(`&aTeleported ${player.getDisplayName()} to spawn of ${world.name}!`);
 				} else {
 					ctx.send(`&cInvalid world or player`);
@@ -180,7 +180,7 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 
 			if (args.length == 1 && ctx.player) {
 				const world = server.worlds[server.config.defaultWorldName];
-				ctx.player.teleport(world, world.spawnPoint[0], world.spawnPoint[1], world.spawnPoint[2], world.spawnPointYaw, world.spawnPointPitch);
+				ctx.player.teleport(world, world.spawnPoint.x, world.spawnPoint.y, world.spawnPoint.z, world.spawnPoint.yaw, world.spawnPoint.pitch);
 
 				ctx.send('&aTeleported to main world!');
 			} else if (args.length == 2 && ctx.checkPermission('commands.main.teleportother')) {
@@ -394,7 +394,7 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 			},
 		],
 
-		execute: (ctx) => {
+		execute: async (ctx) => {
 			const args = ctx.command.split(' ');
 
 			try {
@@ -438,7 +438,7 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 
 								ctx.send('&yWorld creation started! It can take a while...');
 
-								const world = server.createWorld(name, [sizeX, sizeY, sizeZ], generator, seed, ctx.player ?? undefined);
+								const world = await server.createWorld(name, [sizeX, sizeY, sizeZ], generator, seed, ctx.player ?? undefined);
 								if (!world) {
 									ctx.send("&aCouldn't create this world!");
 									return;
@@ -454,11 +454,9 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 								if (!ctx.player) throw 'po';
 
 								const world = ctx.player.world;
-								world.spawnPoint = [...ctx.player.position];
-								world.spawnPointPitch = ctx.player.pitch;
-								world.spawnPointYaw = ctx.player.yaw;
+								world.spawnPoint = ctx.player.getPosition();
 
-								ctx.send(`&aChanged worlds spawnpoint to ${world.spawnPoint.join(', ')}.`);
+								ctx.send(`&aChanged worlds spawnpoint to ${world.spawnPoint.x}, ${world.spawnPoint.y}, ${world.spawnPoint.z}.`);
 							}
 							break;
 						case 'delete':
@@ -477,6 +475,26 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 								} else {
 									ctx.send("&cCouldn't delete this world! It's protected or invalid!");
 								}
+							}
+							break;
+						case 'physics':
+							{
+								if (!ctx.checkPermission('commands.world.physics')) throw 'perm';
+								if (args.length != 4) throw 'ia';
+								const name = args[2];
+								const lvl = parseInt(args[3]);
+
+								if (isNaN(lvl)) throw 'ia';
+
+								const world = server.worlds[name];
+
+								if (world) {
+									world.physics = lvl;
+									ctx.send(`&aChanged worlds physics level to ${lvl}!`);
+								} else {
+									ctx.send("&cCouldn't delete this world! It's protected or invalid!");
+								}
+
 							}
 							break;
 					}

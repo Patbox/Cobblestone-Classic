@@ -3,7 +3,7 @@ import { Player, PlayerData } from '../core/player.ts';
 import { IFileHelper, ILogger, Server } from '../core/server.ts';
 import { World } from '../core/world/world.ts';
 import { fs, createHash, wss, serve, serveTLS } from './deps.ts';
-import { gzip, semver, ungzip, uuid } from '../core/deps.ts';
+import { gzip, msgpack, semver, ungzip, uuid } from '../core/deps.ts';
 import { AuthData, Nullable, SubServices } from '../core/types.ts';
 
 const textEncoder = new TextEncoder();
@@ -34,10 +34,12 @@ export class DenoServer extends Server {
 	}
 
 	async _startServer() {
-		if (!semver.satisfies(Deno.version.deno, '>=' + DenoServer.denoVersionMin + ' <' + DenoServer.denoVersionMax )) {
-			this.logger.warn(`Your Deno version is unsupported! This software recomends ${DenoServer.denoVersion}, while you are using ${Deno.version.deno}!`)
+		if (!semver.satisfies(Deno.version.deno, '>=' + DenoServer.denoVersionMin + ' <' + DenoServer.denoVersionMax)) {
+			this.logger.warn(
+				`Your Deno version is unsupported! This software recomends ${DenoServer.denoVersion}, while you are using ${Deno.version.deno}!`
+			);
 		}
-		
+
 		['world', 'player', 'config', 'world/backup', 'logs', 'plugins'].forEach((x) => {
 			if (!fs.existsSync(`./${x}`)) {
 				Deno.mkdirSync(`./${x}`);
@@ -524,9 +526,9 @@ const fileHelper: IFileHelper = {
 
 	savePlayer(uuid: string, player: PlayerData) {
 		try {
-			const file = Deno.createSync(`./player/${uuid}.json`);
+			const file = Deno.createSync(`./player/${uuid}.cpd`);
 
-			file.writeSync(textEncoder.encode(JSON.stringify(player)));
+			file.writeSync(msgpack.encode(player));
 
 			file.close();
 			return true;
@@ -539,7 +541,7 @@ const fileHelper: IFileHelper = {
 	deletePlayer(uuid: string) {
 		try {
 			if (this.existPlayer(uuid)) {
-				Deno.removeSync(`./player/${uuid}.json`);
+				Deno.removeSync(`./player/${uuid}.cpd`);
 			}
 			return true;
 		} catch (e) {
@@ -550,12 +552,12 @@ const fileHelper: IFileHelper = {
 
 	getPlayer(uuid: string) {
 		try {
-			if (!fs.existsSync(`./player/${uuid}.json`)) {
+			if (!fs.existsSync(`./player/${uuid}.cpd`)) {
 				return null;
 			}
 
-			const file = Deno.readTextFileSync(`./player/${uuid}.json`);
-			return JSON.parse(file);
+			const file = Deno.readFileSync(`./player/${uuid}.cpd`);
+			return <PlayerData>msgpack.decode(file);
 		} catch (e) {
 			logger.error(e);
 			return null;
@@ -576,7 +578,7 @@ const fileHelper: IFileHelper = {
 			const out: string[] = [];
 
 			for (const dirEntry of Deno.readDirSync('./player/')) {
-				if (dirEntry.isFile && dirEntry.name.endsWith('.json')) {
+				if (dirEntry.isFile && dirEntry.name.endsWith('.cpd')) {
 					out.push(dirEntry.name.substr(0, dirEntry.name.length - 5));
 				}
 			}
