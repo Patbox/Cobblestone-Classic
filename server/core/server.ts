@@ -5,7 +5,7 @@ import { PhysicsLevel, World, WorldData, WorldGenerator } from './world/world.ts
 import * as event from './events.ts';
 import { AuthData, Holder, Command, GroupInterface, Plugin, Nullable, XYZ } from './types.ts';
 import { ConnectionHandler } from './networking/connection.ts';
-import { setupGenerators } from './world/generators.ts';
+import { setupGenerators, emptyGenerator } from './world/generators.ts';
 import { semver } from './deps.ts';
 import { blocks, blockIds, blocksIdsToName, Block } from './world/blocks.ts';
 import { setupCommands } from './commands.ts';
@@ -14,10 +14,11 @@ export class Server {
 	// Main informations about server
 	static readonly softwareName = 'Cobblestone';
 	static readonly softwareId = 'cobblestone';
-	static readonly softwareVersion = '0.0.10';
+	static readonly softwareVersion = '0.0.11';
 
 	static readonly targetGame = 'Minecraft Classic';
 	static readonly targetVersion = '0.30c';
+	static readonly targetProtocol = 0x07;
 
 	// Copy some of it to class instances
 	readonly softwareName = Server.softwareName;
@@ -25,11 +26,13 @@ export class Server {
 	readonly softwareId = Server.softwareId;
 	readonly targetGame = Server.targetGame;
 	readonly targetVersion = Server.targetVersion;
+	readonly targetProtocol = Server.targetProtocol;
+
 	// Version of API, goes up when new methods are added
-	readonly _apiVersion = '0.0.10';
+	readonly _apiVersion = '0.0.11';
 
 	// Minimal compatible API
-	readonly _minimalApiVersion = '0.0.10';
+	readonly _minimalApiVersion = '0.0.11';
 
 	/**
 	 * Wrapper to access filesystem. Used mostly to abstract stuff
@@ -131,13 +134,15 @@ export class Server {
 				}
 				this.logger.debug(`Loaded groups`);
 			} else {
-				this.groups['default'] = new Group({ name: 'default', permissions: {
-					'commands.spawn': true,
-					'commands.main': true,
-					'commands.maps': true,
-					'commands.goto': true,
-					
-				} });
+				this.groups['default'] = new Group({
+					name: 'default',
+					permissions: {
+						'commands.spawn': true,
+						'commands.main': true,
+						'commands.maps': true,
+						'commands.goto': true,
+					},
+				});
 				this.logger.debug(`Creating default group`);
 			}
 
@@ -154,7 +159,10 @@ export class Server {
 			setupGenerators(this);
 			this.logger.debug(`Default generators are setuped!`);
 
-			this.loadWorld(this.config.defaultWorldName) ?? await this.createWorld(this.config.defaultWorldName, [256, 128, 256], this._generators['grasslands']);
+			if (!this.loadWorld(this.config.defaultWorldName)) {
+				this.logger.log('Creating default world...');
+				await this.createWorld(this.config.defaultWorldName, [256, 128, 256], this._generators['island']); // fs
+			}
 
 			Object.values(this.worlds).forEach((world) => {
 				this.files.saveWorld(`backup/${world.fileName}-${this.formatDate(new Date())}`, world);
@@ -195,6 +203,7 @@ export class Server {
 				this.logger.error(e);
 
 				this.stopServer();
+				return;
 			}
 
 			this.event.ServerCommandRegistration._emit(this);
@@ -206,6 +215,7 @@ export class Server {
 			} catch (e) {
 				this.logger.error(e);
 				this.stopServer();
+				return;
 			}
 
 			this._loaded = true;
@@ -285,7 +295,7 @@ export class Server {
 			conn._server = this;
 			this.logger.conn(`Connection from ${conn.ip}:${conn.port}...`);
 			conn._clientPackets.PlayerIdentification.once(async ({ value: playerInfo }) => {
-				if (playerInfo.protocol != 0x07) {
+				if (!conn.setProtocol(playerInfo.protocol)) {
 					conn.disconnect('Unsupported protocol!');
 					return;
 				} else if (playerInfo.username.length > 32 || playerInfo.username.length < 3) {
@@ -305,6 +315,11 @@ export class Server {
 				});
 
 				if (result.allow) {
+					if (this.players[result.auth.uuid ?? '']) {
+						conn.disconnect('Player with this username is already in game!');
+						result;
+					}
+
 					const subService = result.auth.subService ? `/${result.auth.subService}` : '';
 					this.logger.conn(
 						result.auth.service == 'Unknown'
@@ -324,6 +339,14 @@ export class Server {
 					this.players[player.uuid] = player;
 					this._playerUUIDCache[player.username.toLowerCase()] = player.uuid;
 
+					{
+						const result = this.event.PlayerConnect._emit({ player });
+
+						if (!result) {
+							return;
+						}
+					}
+					
 					await player.changeWorld(player.world);
 					this.sendChatMessage(this.getMessage('join', { player: player.getDisplayName() }), player);
 				} else {
@@ -468,16 +491,14 @@ export class Server {
 					},
 					spawnPoint: view.getSpawnPoint(),
 					physics: PhysicsLevel.FULL,
-					blockData: view.getRawBlockData()
+					blockData: view.getRawBlockData(),
 				},
 				this
 			);
 
-			world.spawnPoint.y = world.getHighestBlock(world.spawnPoint.x, world.spawnPoint.z, true);
-
 			this.worlds[name] = world;
 
-			//this.saveWorld(world);
+			this.saveWorld(world);
 
 			return world;
 		} catch (e) {
@@ -645,8 +666,8 @@ export class Server {
 	 * @param gen Generators name
 	 * @returns WorldGenerator or null
 	 */
-	getGenerator(gen: string): Nullable<WorldGenerator> {
-		return this._generators[gen] ?? null;
+	getGenerator(gen: string): WorldGenerator {
+		return this._generators[gen] ?? emptyGenerator;
 	}
 
 	/**

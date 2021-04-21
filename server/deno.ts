@@ -1,3 +1,4 @@
+import { fs } from './deno/deps.ts';
 import { DenoServer, logger } from './deno/server.ts';
 
 const args = Deno.args;
@@ -8,6 +9,11 @@ let devMode = false;
 
 args.forEach((x) => {
 	switch (x) {
+		case 'clearData':
+			logger.log('Removing all server data...');
+			['world', 'player'].forEach((x) => (fs.existsSync(x) ? Deno.removeSync(x, { recursive: true }) : null));
+			logger.reopenFile();
+			break;
 		case 'help':
 			displayHelp();
 			started = true;
@@ -31,16 +37,22 @@ args.forEach((x) => {
 	}
 });
 
+let srv: DenoServer | null = null;
+
 if (!started) {
 	started = true;
 	try {
-		const server = new DenoServer(plugins, devMode);
-		server._startServer();
+		srv = new DenoServer(plugins, devMode);
+		srv._startServer();
 	} catch (e) {
 		logger.critical('Critical error!');
 		logger.critical(e);
+		Deno.exit(1);
 	}
 }
+
+export const server = srv;
+
 
 function displayHelp() {
 	console.log(

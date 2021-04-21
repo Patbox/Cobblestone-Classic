@@ -20,17 +20,99 @@ export interface IWorldView {
 	setSpawnPoint(x: number, y: number, z: number, yaw: number, pitch: number): void;
 }
 
-export class World implements IWorldView {
+export class WorldView implements IWorldView {
 	readonly blockData: Uint8Array;
 
 	readonly size: [number, number, number];
+	spawnPoint: Position;
+
+	constructor(blockData: Nullable<Uint8Array>, sizeX: number, sizeY: number, sizeZ: number, spawnPoint?: Position) {
+		const size = sizeX * sizeY * sizeZ;
+
+		this.blockData = blockData ?? new Uint8Array(size);
+
+		this.size = [sizeX, sizeY, sizeZ];
+
+		this.spawnPoint = spawnPoint ?? { x: sizeX / 2, y: sizeY / 2 + 10, z: sizeZ / 2, yaw: 0, pitch: 0 };
+	}
+
+	setBlock(x: number, y: number, z: number, block: Block): boolean {
+		return this.setBlockId(x, y, z, block.numId);
+	}
+
+	setBlockId(x: number, y: number, z: number, block: number): boolean {
+		if (this.isInBounds(x, y, z)) {
+			block = block > lastBlockId || block < 0 ? 1 : block;
+			this._rawSetBlockId(x, y, z, block);
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	_rawSetBlockId(x: number, y: number, z: number, block: number) {
+		this.blockData[this.getIndex(x, y, z)] = block;
+	}
+
+	getBlock(x: number, y: number, z: number): Nullable<Block> {
+		return Server.getBlock(this.getBlockId(x, y, z));
+	}
+
+	getBlockId(x: number, y: number, z: number): number {
+		const [x2, y2, z2] = roundDown(x, y, z);
+		return this.isInBounds(x2, y2, z2) ? this.blockData[this.getIndex(x2, y2, z2)] : 0;
+	}
+
+	isInBounds(x: number, y: number, z: number): boolean {
+		const [x2, y2, z2] = roundDown(x, y, z);
+		return x2 >= 0 && y2 >= 0 && z2 >= 0 && x2 < this.size[0] && y2 < this.size[1] && z2 < this.size[2];
+	}
+
+	getHighestBlock(x: number, z: number, nonSolid = false): number {
+		for (let y = this.size[1] - 1; y > 0; y--) {
+			const block = this.getBlock(x, y, z);
+			if (block?.solid || (nonSolid && block?.numId != 0)) {
+				return y;
+			}
+		}
+
+		return 0;
+	}
+
+	getIndex(x: number, y: number, z: number): number {
+		const [x2, y2, z2] = roundDown(x, y, z);
+		return x2 + this.size[0] * (z2 + this.size[2] * y2);
+	}
+
+	getRawBlockData() {
+		return this.blockData;
+	}
+
+	getSize() {
+		return this.size;
+	}
+
+	getSpawnPoint() {
+		return this.spawnPoint;
+	}
+
+	setSpawnPoint(x: number, y: number, z: number, yaw: number, pitch: number): void {
+		this.spawnPoint = {
+			x: x,
+			y: y,
+			z: z,
+			yaw: yaw,
+			pitch: pitch,
+		};
+	}
+}
+
+export class World extends WorldView {
 	readonly uuid: string;
 	readonly fileName: string;
 	readonly players: Player[] = [];
 
 	name: string;
-
-	spawnPoint: Position;
 
 	readonly timeCreated: bigint;
 	readonly createdBy: {
@@ -54,18 +136,12 @@ export class World implements IWorldView {
 	physics: PhysicsLevel;
 
 	constructor(fileName: string, data: WorldData, server: Server) {
+		super(data.blockData ?? null, data.size[0], data.size[1], data.size[2], data.spawnPoint);
 		this._server = server;
 
 		this.fileName = fileName;
 		this.uuid = data.uuid ?? uuid.v4();
 		this.name = data.name ?? fileName;
-		const size = data.size[0] * data.size[1] * data.size[2];
-
-		this.blockData = data.blockData ?? new Uint8Array(size);
-
-		this.size = data.size;
-
-		this.spawnPoint = data.spawnPoint;
 
 		this.timeCreated = data.timeCreated ?? BigInt(Date.now());
 		this.generator = data.generator;
@@ -77,64 +153,17 @@ export class World implements IWorldView {
 		this.physics = data.physics;
 	}
 
-	getSpawnPoint() {
-		return this.spawnPoint;
-	}
-
-	setSpawnPoint(x: number, y: number, z: number, yaw: number, pitch: number): void {
-		this.spawnPoint = {
-			x: x,
-			y: y,
-			z: z,
-			yaw: yaw,
-			pitch: pitch,
-		};
-	}
-
-	setBlock(x: number, y: number, z: number, block: Block): boolean {
-		return this.setBlockId(x, y, z, block.numId);
-	}
-
 	setBlockId(x: number, y: number, z: number, block: number): boolean {
-		if (this.isInBounds(x, y, z)) {
-			block = block > lastBlockId || block < 0 ? 1 : block;
-			this._rawSetBlockId(x, y, z, block);
+		const out = super.setBlockId(x, y, z, block);
+		if (out) {
 			this.players.forEach((p) => p._connectionHandler.setBlock(x, y, z, block));
-			return true;
-		} else {
-			return false;
 		}
-	}
 
-	_rawSetBlockId(x: number, y: number, z: number, block: number) {
-		this.blockData[this.getIndex(x, y, z)] = block;
-	}
-
-	getBlock(x: number, y: number, z: number): Nullable<Block> {
-		return this._server.getBlock(this.getBlockId(x, y, z));
-	}
-
-	getBlockId(x: number, y: number, z: number): number {
-		return this.isInBounds(x, y, z) ? this.blockData[this.getIndex(x, y, z)] : 0;
-	}
-
-	isInBounds(x: number, y: number, z: number): boolean {
-		return x >= 0 && y >= 0 && z >= 0 && x < this.size[0] && y < this.size[1] && z < this.size[2];
+		return out;
 	}
 
 	save() {
 		this._server.saveWorld(this);
-	}
-
-	getHighestBlock(x: number, z: number, nonSolid = false): number {
-		for (let y = this.size[1] - 1; y > 0; y--) {
-			const block = this.getBlock(x, y, z);
-			if ((nonSolid && block?.numId != 0) || block?.solid) {
-				return y;
-			}
-		}
-
-		return 0;
 	}
 
 	teleportAllPlayers(world: World, x?: number, y?: number, z?: number, yaw?: number, pitch?: number) {
@@ -196,18 +225,6 @@ export class World implements IWorldView {
 				}
 			}
 		}
-	}
-
-	getIndex(x: number, y: number, z: number): number {
-		return x + this.size[0] * (z + this.size[2] * y);
-	}
-
-	getRawBlockData() {
-		return this.blockData;
-	}
-
-	getSize() {
-		return this.size;
 	}
 
 	_addPlayer(player: Player) {
@@ -339,88 +356,8 @@ export class World implements IWorldView {
 	}
 }
 
-export class WorldView implements IWorldView {
-	readonly blockData: Uint8Array;
-
-	readonly size: [number, number, number];
-	spawnPoint: Position;
-
-	constructor(blockData: Nullable<Uint8Array>, sizeX: number, sizeY: number, sizeZ: number, spawnPoint?: Position) {
-		const size = sizeX * sizeY * sizeZ;
-
-		this.blockData = blockData ?? new Uint8Array(size);
-
-		this.size = [sizeX, sizeY, sizeZ];
-
-		this.spawnPoint = spawnPoint ?? { x: sizeX / 2, y: sizeY / 2 + 10, z: sizeZ / 2, yaw: 0, pitch: 0 };
-	}
-
-	setBlock(x: number, y: number, z: number, block: Block): boolean {
-		return this.setBlockId(x, y, z, block.numId);
-	}
-
-	setBlockId(x: number, y: number, z: number, block: number): boolean {
-		if (this.isInBounds(x, y, z)) {
-			block = block > lastBlockId || block < 0 ? 1 : block;
-			this._rawSetBlockId(x, y, z, block);
-			return true;
-		} else {
-			return false;
-		}
-	}
-
-	_rawSetBlockId(x: number, y: number, z: number, block: number) {
-		this.blockData[this.getIndex(x, y, z)] = block;
-	}
-
-	getBlock(x: number, y: number, z: number): Nullable<Block> {
-		return Server.getBlock(this.getBlockId(x, y, z));
-	}
-
-	getBlockId(x: number, y: number, z: number): number {
-		return this.isInBounds(x, y, z) ? this.blockData[this.getIndex(x, y, z)] : 0;
-	}
-
-	isInBounds(x: number, y: number, z: number): boolean {
-		return x >= 0 && y >= 0 && z >= 0 && x < this.size[0] && y < this.size[1] && z < this.size[2];
-	}
-
-	getHighestBlock(x: number, z: number, nonSolid = false): number {
-		for (let y = this.size[1] - 1; y > 0; y--) {
-			const block = this.getBlock(x, y, z);
-			if ((nonSolid && block?.numId != 0) || block?.solid) {
-				return y;
-			}
-		}
-
-		return 0;
-	}
-
-	getIndex(x: number, y: number, z: number): number {
-		return x + this.size[0] * (z + this.size[2] * y);
-	}
-
-	getRawBlockData() {
-		return this.blockData;
-	}
-
-	getSize() {
-		return this.size;
-	}
-
-	getSpawnPoint() {
-		return this.spawnPoint;
-	}
-	
-	setSpawnPoint(x: number, y: number, z: number, yaw: number, pitch: number): void {
-		this.spawnPoint = {
-			x: x,
-			y: y,
-			z: z,
-			yaw: yaw,
-			pitch: pitch,
-		};
-	}
+function roundDown(x: number, y: number, z: number): [number, number, number] {
+	return [Math.floor(x), Math.floor(y), Math.floor(z)];
 }
 
 export interface WorldGenerator {

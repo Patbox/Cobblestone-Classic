@@ -8,6 +8,8 @@ import { AuthData, Nullable, SubServices } from '../core/types.ts';
 
 const textEncoder = new TextEncoder();
 
+export const defaultFolders = ['world', 'player', 'config', 'logs', 'plugins'];
+
 export class DenoServer extends Server {
 	//protected _saltMineOnline: string;
 	protected _saltBetaCraft: string;
@@ -40,7 +42,7 @@ export class DenoServer extends Server {
 			);
 		}
 
-		['world', 'player', 'config', 'world/backup', 'logs', 'plugins'].forEach((x) => {
+		[...defaultFolders, 'world/backup'].forEach((x) => {
 			if (!fs.existsSync(`./${x}`)) {
 				Deno.mkdirSync(`./${x}`);
 			}
@@ -211,23 +213,17 @@ export class DenoServer extends Server {
 
 	async authenticatePlayer(data: AuthData): Promise<{ auth: AuthData; allow: boolean }> {
 		if (data.authenticated) {
-			return { allow: true, auth: { ...data, username: `#${data.username}` } };
+			return { allow: true, auth: data };
 		}
 
 		if (this.config.classicOnlineMode) {
 			let subService: Nullable<SubServices> = null;
-			/*const hash = createHash('md5');
-			hash.update(this._saltMineOnline + data.username);
 
-			if (hash.toString() == data.secret) {
-				subService = 'MineOnline';
-			} else {*/
 			const hash = createHash('md5');
 			hash.update(this._saltBetaCraft + data.username);
 			if (hash.toString() == data.secret) {
 				subService = 'Betacraft';
 			}
-			//}
 
 			if (subService != null) {
 				const moj: { id: string; name: string; error?: string } = await (
@@ -279,7 +275,7 @@ export class DenoServer extends Server {
 
 const colorsTag = /&[0-9a-fl-or]/gi;
 
-export const logger: ILogger & { writeToLog: (t: string) => void; file?: Deno.File; openedAt?: number } = {
+export const logger: ILogger & { writeToLog: (t: string) => void; reopenFile: () => void; file?: Deno.File; openedAt?: number } = {
 	log: (text: string) => {
 		const out = `&8[&f${hourNow()}&8] &f${text}`;
 
@@ -336,21 +332,28 @@ export const logger: ILogger & { writeToLog: (t: string) => void; file?: Deno.Fi
 		const day = date.getDay();
 
 		if (logger.openedAt != day || logger.file == undefined) {
-			logger.openedAt = day;
-			logger.file?.close();
-			const base = Server.formatDate(date, false);
-			let name = base;
-			let n = 1;
-
-			while (fs.existsSync(`./logs/${name}.log`)) {
-				name = `${base}-${n}`;
-				n = n + 1;
-			}
-			logger.file = Deno.openSync(`./logs/${name}.log`, { write: true, read: true, create: true });
+			logger.reopenFile();
 		}
 
-		logger.file.writeSync(textEncoder.encode(clean + '\n'));
+		logger.file?.writeSync(textEncoder.encode(clean + '\n'));
 	},
+
+	reopenFile: () => {
+		const date = new Date();
+		logger.openedAt = date.getDay();
+		logger.file?.close();
+		const base = Server.formatDate(date, false);
+		let name = base;
+		let n = 1;
+
+		while (fs.existsSync(`./logs/${name}.log`)) {
+			name = `${base}-${n}`;
+			n = n + 1;
+		}
+
+		fs.ensureDirSync('./logs');
+		logger.file = Deno.openSync(`./logs/${name}.log`, { write: true, read: true, create: true });
+	}
 };
 
 const colorMap: Record<string, string> = {
@@ -566,7 +569,7 @@ const fileHelper: IFileHelper = {
 
 	existPlayer(uuid: string) {
 		try {
-			return fs.existsSync(`./player/${uuid}.cw`);
+			return fs.existsSync(`./player/${uuid}.cpd`);
 		} catch (e) {
 			logger.error(e);
 			return false;

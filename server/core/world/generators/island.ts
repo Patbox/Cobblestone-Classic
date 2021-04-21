@@ -4,7 +4,7 @@ import { makeMurmur } from '../../../libs/murmur.ts';
 import { WorldView } from '../world.ts';
 import { createClassicTree, createTree } from './helpers/tree.ts';
 import { createOres } from './helpers/ores.ts';
-import { sendDataToMain } from './helpers/sendData.ts';
+import { sendDataToMain } from "./helpers/general.ts";
 
 if ('onmessage' in self) {
 	const worker = self as Worker & typeof self;
@@ -29,12 +29,27 @@ if ('onmessage' in self) {
 
 		const tempWorld = new WorldView(null, xSize, ySize, zSize);
 
+		const islandShape: number[][] = new Array(xSize);
+		{
+			const tmp = Math.sqrt(xSize * xSize + zSize * zSize);
+			for (let x = 0; x < xSize; x++) {
+				islandShape[x] = new Array(zSize);
+				for (let z = 0; z < xSize; z++) {
+					const tX = x - xSize / 2;
+					const tZ = z - zSize / 2;
+
+					const tmp2 = ySize / 2 - (tX * tX + tZ * tZ) / tmp + 12;
+
+					islandShape[x][z] = tmp2 > ySize / 3 ? tmp2 : ySize / 3;
+				}
+			}
+		}
 		for (let y = 0; y < ySize; y++) {
 			for (let x = 0; x < xSize; x++) {
 				for (let z = 0; z < zSize; z++) {
 					const h = heightNoise(x / 120, z / 120) + 0.4 + (heightNoise2(x / 10, z / 10) + 1) / 4;
 					//if ((caveNoise(x / 70, y / 70, z / 70) * (1.2 - h) + caveNoise2(x / 40, y / 40, z / 40) * h) * 16  >= 0) {
-					if ((caveNoise(x / 70, y / 70, z / 70) * (1.2 - h) + caveNoise2(x / 40, y / 40, z / 40) * h) * 16 + ySize / 2 + 3 >= y) {
+					if ((caveNoise(x / 70, y / 70, z / 70) * (1.2 - h) + caveNoise2(x / 40, y / 40, z / 40) * h) * 16 + islandShape[x][z] + 3 >= y) {
 						tempWorld.setBlockId(x, y, z, 1);
 					}
 				}
@@ -55,7 +70,7 @@ if ('onmessage' in self) {
 					let block = 0;
 
 					if (b0 == 1 && b1 == 0 && b2 == 0) {
-						block = y > (ySize - 1) / 2 ? blockIds.grass : blockIds.sand;
+						block = y > (ySize) / 2 + 2 ? blockIds.grass : blockIds.sand;
 					} else if (b0 + b1 + b2 + b3 + b4 == 5) {
 						block = blockIds.stone;
 					} else if (b0 == 1 && b1 == 1 && b4 == 0) {

@@ -61,7 +61,7 @@ export class Player {
 			this.permissions = data.permissions;
 			this.groups = [...data.groups];
 			this.groups.includes('default') ? null : this.groups.push('default');
-			this.world = server.worlds[data.world];
+			this.world = server.worlds[data.world] ?? server.worlds[server.config.defaultWorldName];
 			this.pitch = data.pitch;
 			this.yaw = data.yaw;
 			this.displayName = data.displayName ?? null;
@@ -90,13 +90,16 @@ export class Player {
 			this.world._removePlayer(this);
 			this.isInWorld = false;
 
+			this.world = world;
+			this.position = [this.world.spawnPoint.x, this.world.spawnPoint.y, this.world.spawnPoint.z];
+			this.yaw = this.world.spawnPoint.yaw;
+			this.pitch = this.world.spawnPoint.pitch;
+			
 			await this._connectionHandler.sendWorld(world);
 
 			this.world._addPlayer(this);
 			this.isInWorld = true;
-			this.position = [this.world.spawnPoint.x, this.world.spawnPoint.y, this.world.spawnPoint.z];
-			this.yaw = this.world.spawnPoint.yaw;
-			this.pitch = this.world.spawnPoint.pitch;
+			
 		}
 	}
 

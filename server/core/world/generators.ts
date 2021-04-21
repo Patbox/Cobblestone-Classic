@@ -1,9 +1,36 @@
 import type { Server } from '../server.ts';
-import { WorldView } from './world.ts';
+import { WorldGenerator, WorldView } from './world.ts';
 import { blockIds } from './blocks.ts';
-import { Position } from '../types.ts';
+import { createWorkerGenerator } from './generators/helpers/general.ts';
+
+export const emptyGenerator: WorldGenerator = {
+	name: 'empty',
+	software: 'Cobblestone',
+	generate: (sizeX: number, sizeY: number, sizeZ: number, _seed?: number) => {
+		const world = new WorldView(null, sizeX, sizeY, sizeZ);
+		return new Promise((r) => {
+			r(world);
+		});
+	},
+};
 
 export function setupGenerators(server: Server) {
+	function workerGenerator(pos: string) {
+		return createWorkerGenerator(new URL(pos, import.meta.url ?? ''));
+	}
+
+	server.addGenerator({
+		name: 'grasslands',
+		software: 'Cobblestone',
+		generate: workerGenerator('./generators/grasslands.ts'),
+	});
+
+	server.addGenerator({
+		name: 'island',
+		software: 'Cobblestone',
+		generate: workerGenerator('./generators/island.ts'),
+	});
+
 	server.addGenerator({
 		name: 'flat',
 		software: 'Cobblestone',
@@ -25,23 +52,5 @@ export function setupGenerators(server: Server) {
 		},
 	});
 
-	server.addGenerator({
-		name: 'grasslands',
-		software: 'Cobblestone',
-		generate: (sizeX: number, sizeY: number, sizeZ: number, seed?: number) => {
-			return new Promise((res) => {
-				const worker = new Worker(new URL('./generators/grasslands.ts', import.meta.url ?? '').href, { type: 'module' });
-				worker.onmessage = (message) => {
-					const data = <{ blockData: string; spawnPoint: Position }>message.data;
-					res(new WorldView(new TextEncoder().encode(data.blockData), sizeX, sizeY, sizeZ, data.spawnPoint));
-				};
-
-				worker.onerror = (e) => {
-					throw e.error;
-				}
-
-				worker.postMessage({ sizeX, sizeY, sizeZ, seed });
-			});
-		},
-	});
+	server.addGenerator(emptyGenerator);
 }

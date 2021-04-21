@@ -207,7 +207,7 @@ export class VoxelSrvConnectionHandler extends ConnectionHandler {
 
 									if (checkLogin.valid) {
 										this._loggedData = {
-											username: checkLogin.username,
+											username: '#' + checkLogin.username,
 											uuid: checkLogin.uuid,
 											service: 'VoxelSrv',
 											secret: null,
@@ -224,7 +224,7 @@ export class VoxelSrvConnectionHandler extends ConnectionHandler {
 											message: this._motd,
 											proxyVersion: voxelsrv.proxyVersion,
 											proxyVersionRev: 0,
-											protocol: 7,
+											protocol: Server.targetProtocol,
 											usePacketTranslation: true,
 											type: 'mc0.30c',
 										})

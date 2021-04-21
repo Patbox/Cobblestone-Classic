@@ -5,6 +5,7 @@ import { gzip } from '../deps.ts';
 import { Nullable, XYZ } from '../types.ts';
 import { Player } from '../player.ts';
 import { Server } from '../server.ts';
+import { protocol6BlockMap } from './blockMaps.ts';
 
 export const serverPackets = new ServerPacketHandler();
 
@@ -19,6 +20,8 @@ export class ConnectionHandler {
 	lastSpawn: XYZ = [0, 0, 0];
 	readonly ip: string;
 	readonly port: number;
+	_protocol = Server.targetProtocol;
+	_blockRemap: number[] | null = null;
 
 	blockUpdates: Uint8Array[] = [];
 
@@ -52,6 +55,18 @@ export class ConnectionHandler {
 		console.log(_packet);
 	}
 
+	setProtocol(protocol: number): boolean {
+		this._protocol = protocol;
+
+		if (protocol == Server.targetProtocol) {
+			return true;
+		} else if (protocol == 0x06) {
+			this._blockRemap = protocol6BlockMap;
+			return true;
+		}
+		return false;
+	}
+
 	sendServerInfo(server: Server) {
 		this._server = server;
 		try {
@@ -59,7 +74,7 @@ export class ConnectionHandler {
 				serverPackets.encodeServerIdentification({
 					name: this._server.config.serverName,
 					motd: this._server.config.serverMotd,
-					protocol: 7,
+					protocol: Server.targetProtocol,
 					userType: 0,
 				})
 			);
@@ -76,7 +91,13 @@ export class ConnectionHandler {
 			const blockData = new Uint8Array(world.blockData.length + 4);
 			const view = new DataView(blockData.buffer, blockData.byteOffset, blockData.byteLength);
 			view.setUint32(0, world.blockData.length);
-			blockData.set(world.blockData, 4);
+			if (this._blockRemap) {
+				for (let x = 4; x < blockData.length; x++) {
+					blockData[x] = this._blockRemap[world.blockData[x - 4]];
+				}
+			} else {
+				blockData.set(world.blockData, 4);
+			}
 
 			const compressedMap = gzip(blockData);
 
@@ -93,22 +114,27 @@ export class ConnectionHandler {
 				});
 
 				await this._send(packet);
-				await new Promise((res) => {
-					setTimeout(() => res(null), 5);
-				});
+				await wait(5);
 			}
 
 			await this._send(serverPackets.encodeLevelFinalize({ x: world.size[0], y: world.size[1], z: world.size[2] }));
+			await wait(5);
+
 			this.sendingWorld = false;
 			world.players.forEach((p) => this.sendSpawnPlayer(p));
 
 			this._player ? this.sendSpawnPlayer(this._player) : null;
+			await wait(10);
 		} catch (e) {
 			this.handleError(e);
 		}
 	}
 
 	setBlock(x: number, y: number, z: number, block: number): void {
+		if (this._blockRemap) {
+			block = this._blockRemap[block];
+		}
+
 		const packet = serverPackets.encodeSetBlock({
 			x,
 			y,
@@ -228,4 +254,10 @@ function fromCords(n: number): number {
 
 function toCords(n: number): number {
 	return Math.floor(n * 32);
+}
+
+function wait(t: number) {
+	return new Promise((res) => {
+		setTimeout(() => res(null), t);
+	});
 }
