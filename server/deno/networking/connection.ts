@@ -152,8 +152,8 @@ export class VoxelSrvConnectionHandler extends ConnectionHandler {
 		this._conn = conn;
 		this.loop(conn);
 		this.isConnected = true;
-		this._secret = uuid.v4() + uuid.v4() + uuid.v4();
-		this._secret2 = uuid.v4() + uuid.v4() + uuid.v4();
+		this._secret = uuid.v4.generate() + uuid.v4.generate() + uuid.v4.generate();
+		this._secret2 = uuid.v4.generate() + uuid.v4.generate() + uuid.v4.generate();
 	}
 
 	async _authenticate(server: Server) {

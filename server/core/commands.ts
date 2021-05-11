@@ -398,6 +398,14 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 					'&7 Lists all generators',
 				],
 			},
+			{
+				title: '/world command',
+				number: 1,
+				lines: [
+					'&6/world backup <name>',
+					'&7 creates backup of world.',
+				],
+			},
 		],
 
 		execute: async (ctx) => {
@@ -478,6 +486,23 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 									return;
 								} else {
 									ctx.send("&cCouldn't delete this world! It's protected or invalid!");
+								}
+							}
+							break;
+						case 'backup':
+							{
+								if (!ctx.checkPermission('commands.world.backup')) throw 'perm';
+								if (args.length != 3) throw 'ia';
+
+								const name = args[2];
+
+								const world = server.worlds[name];
+								if (world) {
+									world.backup();
+									ctx.send('&aWorld backedup!');
+									return;
+								} else {
+									ctx.send("&cCouldn't backup this world! It's unloaded or invalid!");
 								}
 							}
 							break;

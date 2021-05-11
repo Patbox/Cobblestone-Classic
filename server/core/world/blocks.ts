@@ -69,7 +69,7 @@ export type BlockTypes = 'full' | 'fluid' | 'plant' | 'slab' | 'air';
 export const blocks = {
 	air: new Block(0, true, 'air', false, true),
 	stone: new Block(1),
-	grass: new GrassBlock(2, false),
+	grass: new GrassBlock(2),
 	dirt: new Block(3),
 	cobblestone: new Block(4),
 	planks: new Block(5),

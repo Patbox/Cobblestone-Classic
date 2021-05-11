@@ -14,7 +14,7 @@ export class Server {
 	// Main informations about server
 	static readonly softwareName = 'Cobblestone';
 	static readonly softwareId = 'cobblestone';
-	static readonly softwareVersion = '0.0.11';
+	static readonly softwareVersion = '0.0.12';
 
 	static readonly targetGame = 'Minecraft Classic';
 	static readonly targetVersion = '0.30c';
@@ -29,10 +29,10 @@ export class Server {
 	readonly targetProtocol = Server.targetProtocol;
 
 	// Version of API, goes up when new methods are added
-	readonly _apiVersion = '0.0.11';
+	readonly _apiVersion = '0.0.12';
 
 	// Minimal compatible API
-	readonly _minimalApiVersion = '0.0.11';
+	readonly _minimalApiVersion = '0.0.12';
 
 	/**
 	 * Wrapper to access filesystem. Used mostly to abstract stuff
@@ -165,7 +165,7 @@ export class Server {
 			}
 
 			Object.values(this.worlds).forEach((world) => {
-				this.files.saveWorld(`backup/${world.fileName}-${this.formatDate(new Date())}`, world);
+				world.backup();
 			});
 
 			if (this.config.autoSaveInterval > 0) {
@@ -183,7 +183,7 @@ export class Server {
 					this.logger.debug(`Backup started!`);
 					const d = Date.now();
 					Object.values(this.worlds).forEach((world) => {
-						this.files.saveWorld(`backup/${world.fileName}-${this.formatDate(new Date())}`, world);
+						world.backup();
 					});
 					this.logger.debug(`Backup ended! It took ${Date.now() - d} ms!`);
 				}, 1000 * 60 * this.config.backupInterval);
@@ -315,7 +315,7 @@ export class Server {
 				});
 
 				if (result.allow) {
-					if (this.players[result.auth.uuid ?? '']) {
+					if (this.players[result.auth.uuid ?? 'offline-' + result.auth.username.toLowerCase()]) {
 						conn.disconnect('Player with this username is already in game!');
 						result;
 					}
@@ -403,7 +403,7 @@ export class Server {
 	 * @returns If saving was successful
 	 */
 	saveWorld(world: World): boolean {
-		return this.files.saveWorld(world.name, world);
+		return this.files.saveWorld(world.fileName, world);
 	}
 
 	/**
@@ -412,22 +412,22 @@ export class Server {
 	 * @param name World name
 	 * @returns World instance or null (if doesn't exist)
 	 */
-	loadWorld(name: string): Nullable<World> {
+	loadWorld(fileName: string): Nullable<World> {
 		try {
-			if (this.worlds[name] != undefined) {
-				return this.worlds[name];
+			if (this.worlds[fileName] != undefined) {
+				return this.worlds[fileName];
 			} else {
-				const data = this.files.getWorld(name);
+				const data = this.files.getWorld(fileName);
 
 				if (data != null) {
-					const world = new World(name, data, this);
-					this.worlds[name] = world;
+					const world = new World(fileName, data, this);
+					this.worlds[fileName] = world;
 					return world;
 				}
 				return null;
 			}
 		} catch (e) {
-			this.logger.error(`Couldn't load world ${name}!`);
+			this.logger.error(`Couldn't load world ${fileName}!`);
 			this.logger.error(e);
 			return null;
 		}
@@ -496,8 +496,7 @@ export class Server {
 				this
 			);
 
-			this.worlds[name] = world;
-
+			this.worlds[world.fileName] = world;
 			this.saveWorld(world);
 
 			return world;

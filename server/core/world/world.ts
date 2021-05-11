@@ -4,7 +4,7 @@ import type { Nullable, Position, Services, XYZ } from '../types.ts';
 
 import { Byte, decode as decodeNBT, encode as encodeNBT, Short, TagObject } from '../../libs/nbt/index.ts';
 
-import { uuid } from '../deps.ts';
+import { uuid, uuidHelpers } from '../deps.ts';
 import { Block, lastBlockId } from './blocks.ts';
 
 export interface IWorldView {
@@ -140,7 +140,7 @@ export class World extends WorldView {
 		this._server = server;
 
 		this.fileName = fileName;
-		this.uuid = data.uuid ?? uuid.v4();
+		this.uuid = data.uuid ?? uuid.v4.generate();
 		this.name = data.name ?? fileName;
 
 		this.timeCreated = data.timeCreated ?? BigInt(Date.now());
@@ -164,6 +164,30 @@ export class World extends WorldView {
 
 	save() {
 		this._server.saveWorld(this);
+	}
+
+	backup() {
+		this._server.files.saveWorld(`backup/${this.fileName}-${this._server.formatDate(new Date())}`, this);
+	}
+
+	clone(newName: string): World {
+		const worldnames = this._server.files.listWorlds();
+
+		let name = newName;
+		let number = 0;
+
+		while (worldnames.includes(name)) {
+			number++;
+			name = newName + '_' + number;
+		}
+		
+		const world = World.deserialize(this.serialize());
+
+		if (world == null) {
+			throw 'Somewhing went wrong while clonning world!';
+		}
+
+		return new World(name, world, this._server);
 	}
 
 	teleportAllPlayers(world: World, x?: number, y?: number, z?: number, yaw?: number, pitch?: number) {
@@ -251,7 +275,7 @@ export class World extends WorldView {
 		return encodeNBT('ClassicWorld', {
 			FormatVersion: new Byte(1),
 			Name: this.name,
-			UUID: uuid.parse(this.uuid),
+			UUID: uuidHelpers.uuidToBytes(this.uuid),
 			X: new Short(this.size[0]),
 			Y: new Short(this.size[1]),
 			Z: new Short(this.size[2]),
@@ -289,7 +313,7 @@ export class World extends WorldView {
 
 			const main = <TagObject>decoded.value;
 
-			const id = uuid.stringify(<Uint8Array>main.UUID);
+			const id = uuidHelpers.bytesToUuid(<Uint8Array>main.UUID);
 			const blocks = <Uint8Array>main.BlockArray;
 			const blocks2 = <Uint8Array | undefined>main.BlockArray2;
 

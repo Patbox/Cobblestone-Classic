@@ -3,7 +3,7 @@ import { Player, PlayerData } from '../core/player.ts';
 import { IFileHelper, ILogger, Server } from '../core/server.ts';
 import { World } from '../core/world/world.ts';
 import { fs, createHash, wss, serve, serveTLS } from './deps.ts';
-import { gzip, msgpack, semver, ungzip, uuid } from '../core/deps.ts';
+import { gzip, ungzip, msgpack, semver, uuid } from '../core/deps.ts';
 import { AuthData, Nullable, SubServices } from '../core/types.ts';
 
 const textEncoder = new TextEncoder();
@@ -30,7 +30,7 @@ export class DenoServer extends Server {
 		}*/
 		{
 			const hash = createHash('md5');
-			hash.update(<string>uuid.v4());
+			hash.update(<string>uuid.v4.generate());
 			this._saltBetaCraft = hash.toString();
 		}
 	}

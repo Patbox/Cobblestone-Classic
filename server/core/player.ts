@@ -24,6 +24,13 @@ export class Player {
 	isInWorld: boolean;
 	isConnected: boolean;
 
+	checksCache = {
+		lastPlacedBlockTime: 0,
+		placedBlockNumber: 0,
+		lastChatTime: 0,
+		chatMessagesNumber: 0,
+	}
+
 	readonly _server: Server;
 	readonly _connectionHandler: ConnectionHandler;
 
@@ -344,10 +351,20 @@ export class Player {
 	_action_block_place(x: number, y: number, z: number, blockId: number) {
 		let block = this._server.getBlock(blockId);
 
-		if (!block || !this.world.isInBounds(x, y, z) || !block.placeable) {
+		if (!block || !this.world.isInBounds(x, y, z) || vec.dist([x, y, z], this.position) > 6 || !block.placeable) {
 			this._connectionHandler.setBlock(x, y, z, this.world.getBlockId(x, y, z));
 			return;
 		}
+
+		if (Date.now() - this.checksCache.lastPlacedBlockTime < 1000 && this.checksCache.placedBlockNumber > 9) {
+			this.disconnect(this._server.config.messages.cheatSpam);
+			return;
+		} else if (Date.now() - this.checksCache.lastPlacedBlockTime >= 1000) {
+			this.checksCache.lastPlacedBlockTime = Date.now();
+			this.checksCache.placedBlockNumber = 0;
+		}
+
+		this.checksCache.placedBlockNumber += 1;
 
 		if (block == this._server.blocks.slab && this.world.getBlockId(x, y - 1, z) == block.numId) {
 			this._connectionHandler.setBlock(x, y, z, this.world.getBlockId(x, y, z));
@@ -377,6 +394,15 @@ export class Player {
 			return;
 		}
 
+		if (Date.now() - this.checksCache.lastPlacedBlockTime < 1000 && this.checksCache.placedBlockNumber > 9) {
+			this.disconnect(this._server.config.messages.cheatSpam);
+			return;
+		} else if (Date.now() - this.checksCache.lastPlacedBlockTime >= 1000) {
+			this.checksCache.lastPlacedBlockTime = Date.now();
+			this.checksCache.placedBlockNumber = 0;
+		}
+
+
 		const result = this._server.event.PlayerBlockBreak._emit({ player: this, position: { x, y, z, yaw: 0, pitch: 0 }, block, world: this.world });
 
 		if (result) {
@@ -391,6 +417,17 @@ export class Player {
 	 * Do not use unless you know what are you doing
 	 */
 	_action_chat_message(message: string) {
+
+		if (Date.now() - this.checksCache.lastChatTime < 1000 && this.checksCache.chatMessagesNumber > 5) {
+			this.disconnect(this._server.config.messages.cheatSpam);
+			return;
+		} else if (Date.now() - this.checksCache.lastChatTime >= 1000) {
+			this.checksCache.lastChatTime = Date.now();
+			this.checksCache.chatMessagesNumber = 0;
+		}
+
+		this.checksCache.placedBlockNumber += 1;
+
 		if (message.startsWith('/')) {
 			const result = this.executeCommand(message.slice(1));
 			if (!result) {
@@ -400,7 +437,7 @@ export class Player {
 			const result = this._server.event.PlayerMessage._emit({ player: this, message: message });
 
 			if (result) {
-				this._server.sendChatMessage(this._server.getMessage('chat', { player: this.getDisplayName(), message: message }), this);
+				this._server.sendChatMessage(this._server.getMessage('chat', { player: this.getDisplayName(), message: message.replaceAll('&', '%') }), this);
 			}
 		}
 	}
