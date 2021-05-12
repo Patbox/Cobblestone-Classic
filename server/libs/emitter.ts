@@ -1,8 +1,10 @@
 export class Emitter<T> {
 	readonly cancelable: boolean;
+	readonly errorHandler: EventErrorHandler<T>;
 
-	constructor(cancelable = false) {
+	constructor(cancelable = false, errorHandler:EventErrorHandler<T> = (_em, _ev, er) => console.error(er)) {
 		this.cancelable = cancelable;
+		this.errorHandler = errorHandler;
 	}
 
 	private events: {
@@ -37,26 +39,35 @@ export class Emitter<T> {
 			position: 0,
 		};
 
-		this.events = this.cancelable
-			? this.events.filter((ev, i) => {
-					if (isCanceled) {
-						return true;
-					}
-					ctx.position = i;
-					ev.call(ctx);
-					isCanceled = ctx.canceled;
-					return !ev.remove;
-				})
-			: this.events.filter((ev, i) => {
-					ctx.canceled = false;
-					ctx.position = i;
-					ev.call(ctx);
-					return !ev.remove;
-				});
+		let lastEvent: null | EventCallback<T> = null;
 
+		try {
+			this.events = this.cancelable
+				? this.events.filter((ev, i) => {
+						if (isCanceled) {
+							return true;
+						}
+						ctx.position = i;
+						lastEvent = ev.call;
+						ev.call(ctx);
+						isCanceled = ctx.canceled;
+						return !ev.remove;
+					})
+				: this.events.filter((ev, i) => {
+						ctx.canceled = false;
+						ctx.position = i;
+						lastEvent = ev.call;
+						ev.call(ctx);
+						return !ev.remove;
+					});
+		} catch (e) {
+			this.errorHandler(this, lastEvent, e);
+		}
 		return !isCanceled;
 	}
 }
+
+export type EventErrorHandler<T> = (emitter: Emitter<T>, event: EventCallback<T> | null, error: string) => void;
 
 export interface EventContext<T> {
 	readonly value: T;

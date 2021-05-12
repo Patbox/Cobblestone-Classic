@@ -4,7 +4,7 @@ import { makeMurmur } from '../../../libs/murmur.ts';
 import { WorldView } from '../world.ts';
 import { createClassicTree, createTree } from './helpers/tree.ts';
 import { createOres } from './helpers/ores.ts';
-import { sendDataToMain } from './helpers/sendData.ts';
+import { sendDataToMain } from './helpers/general.ts';
 
 if ('onmessage' in self) {
 	const worker = self as Worker & typeof self;

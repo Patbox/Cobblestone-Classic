@@ -52,7 +52,7 @@ export class ConnectionHandler {
 	}
 
 	_send(_packet: Uint8Array) {
-		console.log(_packet);
+		
 	}
 
 	setProtocol(protocol: number): boolean {
@@ -122,9 +122,15 @@ export class ConnectionHandler {
 
 			this.sendingWorld = false;
 			world.players.forEach((p) => this.sendSpawnPlayer(p));
-
 			this._player ? this.sendSpawnPlayer(this._player) : null;
 			await wait(10);
+			this._player
+				? await this.sendTeleport(
+						this._player,
+						[world.spawnPoint.x, world.spawnPoint.y, world.spawnPoint.z],
+						world.spawnPoint.yaw,
+						world.spawnPoint.pitch
+				) : null;
 		} catch (e) {
 			this.handleError(e);
 		}

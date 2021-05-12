@@ -5,26 +5,10 @@ export function createWorkerGenerator(pos: URL): (sizeX: number, sizeY: number, 
 	return (sizeX: number, sizeY: number, sizeZ: number, seed?: number) => {
 		return new Promise((res) => {
 			const worker = new Worker(pos.href, { type: 'module' });
-			let blockData: Uint8Array;
-			let dataPos = 0;
-			let spawnPoint: Position;
-			let length: number;
 			worker.onmessage = (message) => {
-				const data = <{ type: 'info' | 'data'; blockData: string; spawnPoint: Position; size: number }>message.data;
+				const data = <{ type: 'data'; blockData: Uint8Array; spawnPoint: Position }>message.data;
 
-				if (data.type == 'info') {
-					blockData = new Uint8Array(data.size);
-					spawnPoint = data.spawnPoint;
-					length = data.size;
-				} else {
-					const tmp = new TextEncoder().encode(data.blockData);
-					blockData.set(tmp, dataPos);
-					dataPos += tmp.length;
-
-					if (dataPos >= length) {
-						res(new WorldView(blockData, sizeX, sizeY, sizeZ, spawnPoint));
-					}
-				}
+				res(new WorldView(data.blockData, sizeX, sizeY, sizeZ, data.spawnPoint));
 			};
 
 			worker.onerror = (e) => {
@@ -38,10 +22,6 @@ export function createWorkerGenerator(pos: URL): (sizeX: number, sizeY: number, 
 
 export async function sendDataToMain(worker: Worker, world: WorldView) {
 	const data = world.getRawBlockData();
-	await worker.postMessage({ type: 'info', spawnPoint: world.getSpawnPoint(), size: world.getRawBlockData().length });
-	const txtDec = new TextDecoder();
-	for (let i = 0; i < data.length; i += 1024) {
-		const x = data.slice(i, Math.min(i + 1024, data.length));
-		await worker.postMessage({ type: 'data', blockData: txtDec.decode(x) });
-	}
+	await worker.postMessage({ type: 'data', spawnPoint: world.getSpawnPoint(), blockData: data });
+
 }

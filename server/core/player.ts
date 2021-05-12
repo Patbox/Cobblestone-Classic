@@ -40,19 +40,12 @@ export class Player {
 		this.username = username;
 		this.service = service;
 
-		let numId = -1;
-		for (let x = 0; x < 127; x++) {
-			if (!server._takenPlayerIds.includes(x)) {
-				numId = x;
-				break;
-			}
-		}
+		this.numId = server.getFreePlayerId();
 
-		if (numId == -1) {
+		if (this.numId == -1) {
 			throw 'Server full!';
 		}
 
-		this.numId = numId;
 		server._takenPlayerIds.push(this.numId);
 		this.uuid = uuid;
 		this.client = client;
@@ -91,22 +84,22 @@ export class Player {
 	 * @param world World instacne
 	 */
 	async changeWorld(world: World) {
-		const result = this._server.event.PlayerChangeWorld._emit({ player: this, from: this.world, to: world });
+		if (this.world != world) {
+			const result = this._server.event.PlayerChangeWorld._emit({ player: this, from: this.world, to: world });
 
-		if (result) {
-			this.world._removePlayer(this);
-			this.isInWorld = false;
+			if (result) {
+				this.world._removePlayer(this);
+				this.isInWorld = false;
 
-			this.world = world;
-			this.position = [this.world.spawnPoint.x, this.world.spawnPoint.y, this.world.spawnPoint.z];
-			this.yaw = this.world.spawnPoint.yaw;
-			this.pitch = this.world.spawnPoint.pitch;
-			
-			await this._connectionHandler.sendWorld(world);
-
-			this.world._addPlayer(this);
-			this.isInWorld = true;
-			
+				this.world = world;
+				this.position = [this.world.spawnPoint.x, this.world.spawnPoint.y, this.world.spawnPoint.z];
+				this.yaw = this.world.spawnPoint.yaw;
+				this.pitch = this.world.spawnPoint.pitch;
+				
+				await this._connectionHandler.sendWorld(world);
+				this.world._addPlayer(this);
+				this.isInWorld = true;
+			}
 		}
 	}
 

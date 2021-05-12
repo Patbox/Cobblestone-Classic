@@ -253,7 +253,7 @@ export class World extends WorldView {
 
 	_addPlayer(player: Player) {
 		this.players.push(player);
-
+		player.isInWorld = true;
 		this.players.forEach((p) => p._connectionHandler.sendSpawnPlayer(player));
 	}
 

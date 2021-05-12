@@ -1,4 +1,4 @@
-import { Emitter } from '../libs/emitter.ts';
+import { Emitter, EventCallback, EventErrorHandler } from '../libs/emitter.ts';
 import { Player, PlayerData } from './player.ts';
 import { PhysicsLevel, World, WorldData, WorldGenerator } from './world/world.ts';
 
@@ -14,7 +14,7 @@ export class Server {
 	// Main informations about server
 	static readonly softwareName = 'Cobblestone';
 	static readonly softwareId = 'cobblestone';
-	static readonly softwareVersion = '0.0.12';
+	static readonly softwareVersion = '0.0.13';
 
 	static readonly targetGame = 'Minecraft Classic';
 	static readonly targetVersion = '0.30c';
@@ -49,23 +49,31 @@ export class Server {
 	 */
 	readonly devMode: boolean;
 
+	// deno-lint-ignore no-explicit-any
+	private eventErrorBuilder = (emitterName: string): EventErrorHandler<any> => {
+		// deno-lint-ignore no-explicit-any
+		return (_emitter: Emitter<any>, event: EventCallback<any> | null, error: string) => {
+			this.logger.error(`Error occured while executing event ${emitterName} (${event?.name ?? event}) - ${error}`)
+		}
+	}
+
 	/**
 	 * All main server, player and world events
 	 */
 	readonly event = {
-		PlayerConnect: new Emitter<event.PlayerConnect>(true),
-		PlayerDisconnect: new Emitter<event.PlayerDisconnect>(true),
-		PlayerChangeWorld: new Emitter<event.PlayerChangeWorld>(true),
-		PlayerMove: new Emitter<event.PlayerMove>(true),
-		PlayerColides: new Emitter<event.PlayerColides>(true),
-		PlayerMessage: new Emitter<event.PlayerMessage>(true),
-		PlayerTeleport: new Emitter<event.PlayerTeleport>(true),
-		PlayerBlockBreak: new Emitter<event.PlayerChangeBlock>(true),
-		PlayerBlockPlace: new Emitter<event.PlayerChangeBlock>(true),
+		PlayerConnect: new Emitter<event.PlayerConnect>(true, this.eventErrorBuilder('PlayerConnect')),
+		PlayerDisconnect: new Emitter<event.PlayerDisconnect>(true, this.eventErrorBuilder('PlayerDisconnect')),
+		PlayerChangeWorld: new Emitter<event.PlayerChangeWorld>(true, this.eventErrorBuilder('PlayerChangeWorld')),
+		PlayerMove: new Emitter<event.PlayerMove>(true, this.eventErrorBuilder('PlayerMove')),
+		PlayerColides: new Emitter<event.PlayerColides>(true, this.eventErrorBuilder('PlayerColides')),
+		PlayerMessage: new Emitter<event.PlayerMessage>(true, this.eventErrorBuilder('PlayerMessage')),
+		PlayerTeleport: new Emitter<event.PlayerTeleport>(true, this.eventErrorBuilder('PlayerTeleport')),
+		PlayerBlockBreak: new Emitter<event.PlayerChangeBlock>(true, this.eventErrorBuilder('PlayerBlockBreak')),
+		PlayerBlockPlace: new Emitter<event.PlayerChangeBlock>(true, this.eventErrorBuilder('PlayerBlockPlace')),
 		PlayerCommand: new Emitter<event.PlayerCommand>(true),
-		ServerShutdown: new Emitter<Server>(),
-		ServerLoadingFinished: new Emitter<Server>(),
-		ServerCommandRegistration: new Emitter<Server>(),
+		ServerShutdown: new Emitter<Server>(false, this.eventErrorBuilder('ServerShutdown')),
+		ServerLoadingFinished: new Emitter<Server>(false, this.eventErrorBuilder('ServerLoadingFinished')),
+		ServerCommandRegistration: new Emitter<Server>(false, this.eventErrorBuilder('ServerCommandRegistration')),
 	};
 
 	readonly worlds: Holder<World> = {};
@@ -295,66 +303,73 @@ export class Server {
 			conn._server = this;
 			this.logger.conn(`Connection from ${conn.ip}:${conn.port}...`);
 			conn._clientPackets.PlayerIdentification.once(async ({ value: playerInfo }) => {
-				if (!conn.setProtocol(playerInfo.protocol)) {
-					conn.disconnect('Unsupported protocol!');
-					return;
-				} else if (playerInfo.username.length > 32 || playerInfo.username.length < 3) {
-					conn.disconnect('Invalid nickname!');
-					return;
-				}
-
-				conn.sendServerInfo(this);
-
-				const result = await this.authenticatePlayer({
-					uuid: overrides?.uuid ?? playerInfo.username.toLowerCase(),
-					username: overrides?.username ?? playerInfo.username,
-					service: overrides?.service ?? 'Minecraft',
-					secret: overrides?.secret ?? playerInfo.key,
-					authenticated: overrides?.authenticated ?? false,
-					subService: overrides?.subService ?? null,
-				});
-
-				if (result.allow) {
-					if (this.players[result.auth.uuid ?? 'offline-' + result.auth.username.toLowerCase()]) {
-						conn.disconnect('Player with this username is already in game!');
-						result;
+				try {
+					if (!conn.setProtocol(playerInfo.protocol)) {
+						conn.disconnect('Unsupported protocol!');
+						return;
+					} else if (playerInfo.username.length > 32 || playerInfo.username.length < 3) {
+						conn.disconnect('Invalid nickname!');
+						return;
 					}
 
-					const subService = result.auth.subService ? `/${result.auth.subService}` : '';
-					this.logger.conn(
-						result.auth.service == 'Unknown'
-							? `User ${result.auth.username} (${result.auth.uuid}) doesn't use any auth...`
-							: `User ${result.auth.username} (${result.auth.uuid}) is logged with ${result.auth.service}${subService} auth!`
-					);
+					conn.sendServerInfo(this);
 
-					const player = new Player(
-						result.auth.uuid ?? 'offline-' + result.auth.username.toLowerCase(),
-						result.auth.username,
-						client ?? 'Classic',
-						result.auth.service,
+					const result = await this.authenticatePlayer({
+						uuid: overrides?.uuid ?? playerInfo.username.toLowerCase(),
+						username: overrides?.username ?? playerInfo.username,
+						service: overrides?.service ?? 'Minecraft',
+						secret: overrides?.secret ?? playerInfo.key,
+						authenticated: overrides?.authenticated ?? false,
+						subService: overrides?.subService ?? null,
+					});
 
-						conn,
-						this
-					);
-					this.players[player.uuid] = player;
-					this._playerUUIDCache[player.username.toLowerCase()] = player.uuid;
-
-					{
-						const result = this.event.PlayerConnect._emit({ player });
-
-						if (!result) {
+					if (result.allow) {
+						if (this.players[result.auth.uuid ?? 'offline-' + result.auth.username.toLowerCase()]) {
+							conn.disconnect('Player with this username is already in game!');
 							return;
 						}
+
+						const subService = result.auth.subService ? `/${result.auth.subService}` : '';
+						this.logger.conn(
+							result.auth.service == 'Unknown'
+								? `User ${result.auth.username} (${result.auth.uuid}) doesn't use any auth...`
+								: `User ${result.auth.username} (${result.auth.uuid}) is logged with ${result.auth.service}${subService} auth!`
+						);
+
+						const player = new Player(
+							result.auth.uuid ?? 'offline-' + result.auth.username.toLowerCase(),
+							result.auth.username,
+							client ?? 'Classic',
+							result.auth.service,
+
+							conn,
+							this
+						);
+						this.players[player.uuid] = player;
+						this._playerUUIDCache[player.username.toLowerCase()] = player.uuid;
+
+						{
+							const result = this.event.PlayerConnect._emit({ player });
+
+							if (!result) {
+								return;
+							}
+						}
+
+						await player._connectionHandler.sendWorld(player.world);
+						player.world._addPlayer(player);
+						player.isInWorld = true;
+						this.sendChatMessage(this.getMessage('join', { player: player.getDisplayName() }), player);
+					} else {
+						conn.disconnect('You need to log in!');
 					}
-					
-					await player.changeWorld(player.world);
-					this.sendChatMessage(this.getMessage('join', { player: player.getDisplayName() }), player);
-				} else {
-					conn.disconnect('You need to log in!');
+				} catch (e) {
+					this.logger.conn('Disconnected player - ' + e);
+					conn.disconnect(e);
 				}
 			});
 		} catch (e) {
-			this.logger.error('Disconnected player - ' + e);
+			this.logger.conn('Disconnected player - ' + e);
 			conn.disconnect(e);
 		}
 	}
@@ -705,6 +720,27 @@ export class Server {
 	 */
 	getPlayerIdFromName(username: string): Nullable<string> {
 		return this._playerUUIDCache[username.toLowerCase()] ?? null;
+	}
+
+	/**
+	 * Gets free numeric id, that can be used for player.
+	 */
+	getFreePlayerId(): number {
+		for (let x = 0; x < 127; x++) {
+			let isUnique = true;
+			for (const uuid in this.players) {
+				if (this.players[uuid]?.numId == x) {
+					isUnique = false;
+					break;
+				}
+			}
+
+			if (isUnique) {
+				return x;
+			}
+		}
+
+		return -1;
 	}
 
 	/**
