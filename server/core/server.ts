@@ -14,7 +14,7 @@ export class Server {
 	// Main informations about server
 	static readonly softwareName = 'Cobblestone';
 	static readonly softwareId = 'cobblestone';
-	static readonly softwareVersion = '0.0.13';
+	static readonly softwareVersion = '0.0.14';
 
 	static readonly targetGame = 'Minecraft Classic';
 	static readonly targetVersion = '0.30c';
@@ -29,10 +29,10 @@ export class Server {
 	readonly targetProtocol = Server.targetProtocol;
 
 	// Version of API, goes up when new methods are added
-	readonly _apiVersion = '0.0.12';
+	readonly _apiVersion = '0.0.14';
 
 	// Minimal compatible API
-	readonly _minimalApiVersion = '0.0.12';
+	readonly _minimalApiVersion = '0.0.14';
 
 	/**
 	 * Wrapper to access filesystem. Used mostly to abstract stuff
@@ -76,18 +76,19 @@ export class Server {
 		ServerCommandRegistration: new Emitter<Server>(false, this.eventErrorBuilder('ServerCommandRegistration')),
 	};
 
-	readonly worlds: Holder<World> = {};
-	readonly players: Holder<Player> = {};
-	protected readonly _generators: Holder<WorldGenerator> = {};
-	protected readonly _commands: Holder<Command> = {};
-	protected readonly _plugins: Holder<Plugin> = {};
-	protected _playerUUIDCache: Holder<string> = {};
+	readonly worlds: Map<string, World> = new Map();
+	protected readonly generators: Map<string, WorldGenerator> = new Map();
+	protected readonly _commands: Map<string, Command> = new Map();
+	protected readonly _plugins: Map<string, Plugin> = new Map();
+	protected _playerUUIDCache: Map<string, string> = new Map();
+
+	readonly players: Map<string, Player> = new Map();
 
 	readonly blocks = blocks;
 	readonly blockIds = blockIds;
 	readonly blockIdToName = blocksIdsToName;
 
-	readonly groups: Holder<Group> = {};
+	readonly groups: Map<string, Group> = new Map();
 
 	readonly classicTextRegex = /[^ -~]/gi;
 
@@ -138,11 +139,11 @@ export class Server {
 			if (this.files.existConfig('groups')) {
 				const temp = <Holder<GroupInterface>>this.files.getConfig('groups');
 				for (const x in temp) {
-					this.groups[x] = new Group(temp[x]);
+					this.groups.set(x, new Group(temp[x]));
 				}
 				this.logger.debug(`Loaded groups`);
 			} else {
-				this.groups['default'] = new Group({
+				this.groups.set('default', new Group({
 					name: 'default',
 					permissions: {
 						'commands.spawn': true,
@@ -150,15 +151,15 @@ export class Server {
 						'commands.maps': true,
 						'commands.goto': true,
 					},
-				});
+				}));
 				this.logger.debug(`Creating default group`);
 			}
 
 			if (this.files.existConfig('.uuidcache')) {
-				this._playerUUIDCache = { ...(<Holder<string>>this.files.getConfig('.uuidcache')) };
+				this._playerUUIDCache = new Map(Object.entries(<Holder<string>>this.files.getConfig('.uuidcache')));
 				this.logger.debug(`Loaded player cache`);
 			} else {
-				this._playerUUIDCache = {};
+				this._playerUUIDCache = new Map();
 			}
 
 			this.files.saveConfig('config', this.config);
@@ -169,10 +170,10 @@ export class Server {
 
 			if (!this.loadWorld(this.config.defaultWorldName)) {
 				this.logger.log('Creating default world...');
-				await this.createWorld(this.config.defaultWorldName, [256, 128, 256], this._generators['island']); // fs
+				await this.createWorld(this.config.defaultWorldName, [256, 128, 256], this.generators.get('island') ?? emptyGenerator); // fs
 			}
 
-			Object.values(this.worlds).forEach((world) => {
+			this.worlds.forEach((world) => {
 				world.backup();
 			});
 
@@ -180,7 +181,7 @@ export class Server {
 				this._autoSaveInterval = setInterval(() => {
 					this.logger.debug(`Autosave started!`);
 					const d = Date.now();
-					Object.values(this.worlds).forEach((world) => {
+					this.worlds.forEach((world) => {
 						this.saveWorld(world);
 					});
 					this.logger.debug(`Autosave ended! It took ${Date.now() - d} ms!`);
@@ -190,7 +191,7 @@ export class Server {
 				this._autoBackupInterval = setInterval(() => {
 					this.logger.debug(`Backup started!`);
 					const d = Date.now();
-					Object.values(this.worlds).forEach((world) => {
+					this.worlds.forEach((world) => {
 						world.backup();
 					});
 					this.logger.debug(`Backup ended! It took ${Date.now() - d} ms!`);
@@ -324,7 +325,7 @@ export class Server {
 					});
 
 					if (result.allow) {
-						if (this.players[result.auth.uuid ?? 'offline-' + result.auth.username.toLowerCase()]) {
+						if (this.players.get(result.auth.uuid ?? 'offline-' + result.auth.username.toLowerCase())) {
 							conn.disconnect('Player with this username is already in game!');
 							return;
 						}
@@ -345,8 +346,8 @@ export class Server {
 							conn,
 							this
 						);
-						this.players[player.uuid] = player;
-						this._playerUUIDCache[player.username.toLowerCase()] = player.uuid;
+						this.players.set(player.uuid, player);
+						this._playerUUIDCache.set(player.username.toLowerCase(), player.uuid);
 
 						{
 							const result = this.event.PlayerConnect._emit({ player });
@@ -429,14 +430,14 @@ export class Server {
 	 */
 	loadWorld(fileName: string): Nullable<World> {
 		try {
-			if (this.worlds[fileName] != undefined) {
-				return this.worlds[fileName];
+			if (this.worlds.has(fileName)) {
+				return this.worlds.get(fileName) ?? null;
 			} else {
 				const data = this.files.getWorld(fileName);
 
 				if (data != null) {
 					const world = new World(fileName, data, this);
-					this.worlds[fileName] = world;
+					this.worlds.set(fileName, world);
 					return world;
 				}
 				return null;
@@ -459,18 +460,23 @@ export class Server {
 	unloadWorld(name: string, save = true): boolean {
 		if (this.config.defaultWorldName == name) {
 			return false;
-		} else if (this.worlds[name] == undefined) {
+		} else if (!this.worlds.has(name)) {
 			return true;
 		} else if (save) {
-			this.worlds[name].teleportAllPlayers(this.worlds[this.config.defaultWorldName]);
-			const x = this.saveWorld(this.worlds[name]);
+			const world = this.worlds.get(name);
+			const defaultWorld = this.worlds.get(this.config.defaultWorldName);
+
+			if (world == undefined || defaultWorld == null) throw "World doesn't exist!?";
+
+			world.teleportAllPlayers(defaultWorld);
+			const x = this.saveWorld(world);
 			if (x) {
-				delete this.worlds[name];
+				this.worlds.delete(name);
 			}
 
 			return x;
 		} else {
-			delete this.worlds[name];
+			this.worlds.delete(name);
 			return true;
 		}
 	}
@@ -487,8 +493,8 @@ export class Server {
 	 */
 	async createWorld(name: string, size: XYZ, generator: WorldGenerator, seed?: number, player?: Player): Promise<Nullable<World>> {
 		try {
-			if (this.worlds[name] != undefined) {
-				return this.worlds[name];
+			if (this.worlds.has(name)) {
+				return this.worlds.get(name) ?? null;
 			}
 
 			const view = await generator.generate(size[0], size[1], size[2], seed);
@@ -511,7 +517,7 @@ export class Server {
 				this
 			);
 
-			this.worlds[world.fileName] = world;
+			this.worlds.set(world.fileName, world);
 			this.saveWorld(world);
 
 			return world;
@@ -544,6 +550,28 @@ export class Server {
 	}
 
 	/**
+	 * Gets loaded world
+	 * 
+	 * @param name World's name
+	 * @returns World or null
+	 */
+	getWorld(name: string): Nullable<World> {
+		return this.worlds.get(name) ?? null;
+	}
+
+
+	/**
+	 * Returns default world
+	 */
+	getDefaultWorld(): World {
+		const defaultWorld = this.worlds.get(this.config.defaultWorldName);
+		if (defaultWorld == null) {
+			throw "Default world isn't loaded!";
+		}
+		return defaultWorld;
+	}
+
+	/**
 	 * Adds plugin
 	 *
 	 * @param plugin Plugin instance
@@ -569,13 +597,15 @@ export class Server {
 
 						await plugin.init(this);
 
-						this._plugins[plugin.id] = {
+						const newPlugin = {
 							...plugin,
 							name: plugin.name ?? plugin.id,
-							init: (_x) => null,
+							init: (_x: Server) => null,
 						};
 
-						return this._plugins[plugin.id];
+						this._plugins.set(plugin.id, newPlugin);
+
+						return newPlugin;
 					} else {
 						this.logger.warn(`Plugin ${plugin.name} (${textId}) requires newer api version (${plugin.cobblestoneApi}). Skipping...`);
 						return null;
@@ -602,7 +632,7 @@ export class Server {
 	 * @returns Plugin or null
 	 */
 	getPlugin(plugin: string): Nullable<Plugin> {
-		return this._plugins[plugin] ?? null;
+		return this._plugins.get(plugin) ?? null;
 	}
 
 	/**
@@ -616,7 +646,7 @@ export class Server {
 			return false;
 		}
 
-		this._commands[command.name] = command;
+		this._commands.set(command.name, command);
 		this.logger.debug(`Command ${command.name} added`);
 
 		return true;
@@ -633,8 +663,8 @@ export class Server {
 			return false;
 		}
 
-		if (this._commands[command]) {
-			delete this._commands[command];
+		if (this._commands.has(command)) {
+			this._commands.delete(command);
 			this.logger.debug(`Command ${command} removed`);
 			return true;
 		}
@@ -651,13 +681,13 @@ export class Server {
 	getCommand(command: string): Nullable<Command> {
 		const x = command.split(' ');
 
-		return this._commands[x[0]] ?? null;
+		return this._commands.get(x[0]) ?? null;
 	}
 
 	/**
 	 * Returns all commands (readonly)
 	 */
-	getAllCommands(): Readonly<Holder<Command>> {
+	getAllCommands(): Map<string, Command> {
 		return this._commands;
 	}
 
@@ -668,7 +698,7 @@ export class Server {
 	 * @returns Boolean indicating, if operation was successful
 	 */
 	addGenerator(gen: WorldGenerator): boolean {
-		this._generators[gen.name] = gen;
+		this.generators.set(gen.name, gen);
 		this.logger.debug(`Generator ${gen.name} added`);
 
 		return true;
@@ -681,14 +711,14 @@ export class Server {
 	 * @returns WorldGenerator or null
 	 */
 	getGenerator(gen: string): WorldGenerator {
-		return this._generators[gen] ?? emptyGenerator;
+		return this.generators.get(gen) ?? emptyGenerator;
 	}
 
 	/**
 	 * Returns all generators (readonly)
 	 */
-	getAllGenerators(): Readonly<Holder<WorldGenerator>> {
-		return this._generators;
+	getAllGenerators(): Map<string, WorldGenerator> {
+		return this.generators;
 	}
 
 	/**
@@ -719,7 +749,7 @@ export class Server {
 	 * @returns Player's UUID or null
 	 */
 	getPlayerIdFromName(username: string): Nullable<string> {
-		return this._playerUUIDCache[username.toLowerCase()] ?? null;
+		return this._playerUUIDCache.get(username.toLowerCase()) ?? null;
 	}
 
 	/**
@@ -729,7 +759,7 @@ export class Server {
 		for (let x = 0; x < 127; x++) {
 			let isUnique = true;
 			for (const uuid in this.players) {
-				if (this.players[uuid]?.numId == x) {
+				if (this.players.get(uuid)?.numId == x) {
 					isUnique = false;
 					break;
 				}

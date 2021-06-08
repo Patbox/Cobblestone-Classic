@@ -265,13 +265,17 @@ export class VoxelSrvConnectionHandler extends ConnectionHandler {
 	}
 
 	async _send(packet: Uint8Array) {
-		await this._conn?.send(
-			new Uint8Array(
-				<ArrayBuffer>voxelsrv.parseToMessage('proxy-server', 'Data', {
-					message: packet,
-				})
-			)
-		);
+		try {
+			await this._conn?.send(
+				new Uint8Array(
+					<ArrayBuffer>voxelsrv.parseToMessage('proxy-server', 'Data', {
+						message: packet,
+					})
+				)
+			);
+		} catch (_e) {
+			null;
+		}
 	}
 
 	protected close(reason = 'Connection closed!'): void {

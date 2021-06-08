@@ -61,12 +61,12 @@ export class Player {
 			this.permissions = data.permissions;
 			this.groups = [...data.groups];
 			this.groups.includes('default') ? null : this.groups.push('default');
-			this.world = server.worlds[data.world] ?? server.worlds[server.config.defaultWorldName];
+			this.world = server.getWorld(data.world) ?? server.getDefaultWorld();
 			this.pitch = data.pitch;
 			this.yaw = data.yaw;
 			this.displayName = data.displayName ?? null;
 		} else {
-			this.world = server.worlds[server.config.defaultWorldName];
+			this.world = server.getDefaultWorld();
 
 			this.position = [this.world.spawnPoint.x, this.world.spawnPoint.y, this.world.spawnPoint.z];
 			this.yaw = this.world.spawnPoint.yaw;
@@ -243,7 +243,7 @@ export class Player {
 			return !!this.permissions[permission];
 		}
 		for (const groupName of this.groups) {
-			const x = this._server.groups[groupName]?.checkPermissionExact(permission);
+			const x = this._server.groups.get(groupName)?.checkPermissionExact(permission);
 
 			if (x != null) {
 				return x;
@@ -262,7 +262,7 @@ export class Player {
 		this.isInWorld = false;
 		this.isConnected = false;
 		this.world._removePlayer(this);
-		delete this._server.players[this.uuid];
+		this._server.players.delete(this.uuid);
 		this._server._takenPlayerIds.splice(this._server._takenPlayerIds.indexOf(this.numId));
 	}
 
@@ -502,12 +502,13 @@ export class VirtualPlayerHolder {
 		this.uuid = uuid;
 		this._server = server;
 
-		this.player = server.players[uuid] ?? null;
-		this.playerData = this.player?.getPlayerData() ?? server.files.getPlayer(uuid);
+		this.player = server.players.get(uuid) ?? null;
+		const playerData = this.player?.getPlayerData() ?? server.files.getPlayer(uuid);
 
-		if (!this.playerData) {
+		if (!playerData) {
 			throw 'No player!';
 		}
+		this.playerData = playerData;
 
 		this.joinEvent = (ev: EventContext<event.PlayerConnect>) => {
 			if (ev.value.player.uuid == uuid) {
@@ -610,7 +611,7 @@ export class VirtualPlayerHolder {
 		}
 
 		for (const groupName in groups) {
-			const group = this._server.groups[groupName];
+			const group = this._server.groups.get(groupName);
 
 			if (group != null) {
 				if (group.permissions[permission] != null) {

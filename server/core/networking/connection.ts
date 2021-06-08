@@ -51,9 +51,7 @@ export class ConnectionHandler {
 		}
 	}
 
-	_send(_packet: Uint8Array) {
-		
-	}
+	_send(_packet: Uint8Array) {}
 
 	setProtocol(protocol: number): boolean {
 		this._protocol = protocol;
@@ -130,7 +128,8 @@ export class ConnectionHandler {
 						[world.spawnPoint.x, world.spawnPoint.y, world.spawnPoint.z],
 						world.spawnPoint.yaw,
 						world.spawnPoint.pitch
-				) : null;
+				  )
+				: null;
 		} catch (e) {
 			this.handleError(e);
 		}
@@ -177,21 +176,21 @@ export class ConnectionHandler {
 	}
 
 	disconnect(message: string) {
-		if (this._player?.isConnected) {
-			this._player?.disconnect();
-			return;
-		}
+		try {
+			if (this._player?.isConnected) {
+				this._player?.disconnect();
+				return;
+			}
 
-		if (this.isConnected) {
-			if (this._player) {
-				this._server?.logger.conn(`User ${this.ip}:${this.port} (${this._player.username}) disconnected! Reason ${message}`);
-			}
-			this.isConnected = false;
-			try {
+			if (this.isConnected) {
+				if (this._player) {
+					this._server?.logger.conn(`User ${this.ip}:${this.port} (${this._player.username}) disconnected! Reason ${message}`);
+				}
+				this.isConnected = false;
 				this._send(serverPackets.encodeDisconnect({ reason: message }));
-			} catch (e) {
-				this.handleError(e, false);
 			}
+		} catch (e) {
+			this.handleError(e, false);
 		}
 	}
 

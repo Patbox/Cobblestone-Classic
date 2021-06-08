@@ -110,7 +110,7 @@ export class WorldView implements IWorldView {
 export class World extends WorldView {
 	readonly uuid: string;
 	readonly fileName: string;
-	readonly players: Player[] = [];
+	readonly players: Set<Player> = new Set();
 
 	name: string;
 
@@ -252,17 +252,13 @@ export class World extends WorldView {
 	}
 
 	_addPlayer(player: Player) {
-		this.players.push(player);
+		this.players.add(player);
 		player.isInWorld = true;
 		this.players.forEach((p) => p._connectionHandler.sendSpawnPlayer(player));
 	}
 
 	_removePlayer(player: Player) {
-		const x = this.players.indexOf(player);
-
-		if (x != -1) {
-			this.players.splice(x);
-		}
+		this.players.delete(player);
 
 		this.players.forEach((p) => p._connectionHandler.sendDespawnPlayer(player));
 	}

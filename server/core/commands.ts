@@ -1,8 +1,8 @@
 import { VirtualPlayerHolder } from './player.ts';
 import { Group, Server } from './server.ts';
-import { Command, HelpPage, Holder } from './types.ts';
+import { Command, HelpPage } from './types.ts';
 
-export function setupCommands(server: Server, _commands: Holder<Command>) {
+export function setupCommands(server: Server, _commands: Map<string, Command>) {
 	server.addCommand({
 		name: 'help',
 		description: 'Contains list of all commands',
@@ -86,7 +86,7 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 							lines: lines,
 						};
 					} else {
-						const pages = _commands[command].help ?? [];
+						const pages = _commands.get(command)?.help ?? [];
 						size = pages.length;
 
 						if (size == 0) {
@@ -140,7 +140,7 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 
 				ctx.send('&aTeleported to spawn!');
 			} else if (args.length == 2 && ctx.player) {
-				const world = server.worlds[args[1]];
+				const world = server.getWorld(args[1]);
 				if (world) {
 					await ctx.player.changeWorld(world);
 					ctx.send(`&aTeleported to spawn of ${world.name}!`);
@@ -148,8 +148,8 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 					ctx.send(`&cWorld ${args[1]} doesn't exist!`);
 				}
 			} else if (args.length == 3 && ctx.checkPermission('commands.spawn.teleportother')) {
-				const world = server.worlds[args[1]];
-				const player = server.players[server.getPlayerIdFromName(args[2]) ?? ''] ?? null;
+				const world = server.getWorld(args[1]);
+				const player = server.players.get(server.getPlayerIdFromName(args[2]) ?? '') ?? null;
 
 				if (world && player) {
 					await player.teleport(world, world.spawnPoint.x, world.spawnPoint.y, world.spawnPoint.z, world.spawnPoint.yaw, world.spawnPoint.pitch);
@@ -179,13 +179,13 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 			const args = ctx.command.split(' ');
 
 			if (args.length == 1 && ctx.player) {
-				const world = server.worlds[server.config.defaultWorldName];
+				const world = server.getDefaultWorld();
 				await ctx.player.teleport(world, world.spawnPoint.x, world.spawnPoint.y, world.spawnPoint.z, world.spawnPoint.yaw, world.spawnPoint.pitch);
 
 				ctx.send('&aTeleported to main world!');
 			} else if (args.length == 2 && ctx.checkPermission('commands.main.teleportother')) {
-				const world = server.worlds[server.config.defaultWorldName];
-				const player = server.players[server.getPlayerIdFromName(args[2]) ?? ''] ?? null;
+				const world = server.getDefaultWorld();
+				const player = server.players.get(server.getPlayerIdFromName(args[2]) ?? '') ?? null;
 
 				if (player) {
 					await player.changeWorld(world);
@@ -280,11 +280,11 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 							break;
 						case 'group':
 							{
-								let group = server.groups[args[2]];
+								let group = server.groups.get(args[2]);
 								let tmp = false;
 								if (!group) {
 									group = new Group({ name: args[2], permissions: {} });
-									server.groups[args[2]] = group;
+									server.groups.set(args[2], group);
 								}
 
 								switch (args[2]) {
@@ -337,7 +337,7 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 		execute: (ctx) => {
 			ctx.send('&aAvailable worlds:');
 			let temp = ' ';
-			Object.values(server.worlds).forEach((w) => {
+			server.worlds.forEach((w) => {
 				temp == ' ' ? (temp += w.name) : (temp = [temp, w.name].join('&7,&f '));
 
 				if (temp.length > 50) {
@@ -362,7 +362,7 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 
 			const args = ctx.command.split(' ');
 			if (args.length == 2) {
-				const world = server.worlds[args[1]];
+				const world = server.getWorld(args[1]);
 
 				if (world) {
 					await ctx.player.changeWorld(world);
@@ -496,7 +496,7 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 
 								const name = args[2];
 
-								const world = server.worlds[name];
+								const world = server.getWorld(name);
 								if (world) {
 									world.backup();
 									ctx.send('&aWorld backedup!');
@@ -515,7 +515,7 @@ export function setupCommands(server: Server, _commands: Holder<Command>) {
 
 								if (isNaN(lvl)) throw 'ia';
 
-								const world = server.worlds[name];
+								const world = server.getWorld(name);
 
 								if (world) {
 									world.physics = lvl;
