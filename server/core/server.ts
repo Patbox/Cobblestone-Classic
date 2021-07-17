@@ -14,7 +14,7 @@ export class Server {
 	// Main informations about server
 	static readonly softwareName = 'Cobblestone';
 	static readonly softwareId = 'cobblestone';
-	static readonly softwareVersion = '0.0.14';
+	static readonly softwareVersion = '0.0.15';
 
 	static readonly targetGame = 'Minecraft Classic';
 	static readonly targetVersion = '0.30c';

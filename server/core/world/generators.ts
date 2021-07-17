@@ -6,6 +6,7 @@ import { createWorkerGenerator } from './generators/helpers/general.ts';
 export const emptyGenerator: WorldGenerator = {
 	name: 'empty',
 	software: 'Cobblestone',
+	minimalSize: [1, 1, 1],
 	generate: (sizeX: number, sizeY: number, sizeZ: number, _seed?: number) => {
 		const world = new WorldView(null, sizeX, sizeY, sizeZ);
 		return new Promise((r) => {
@@ -22,18 +23,21 @@ export function setupGenerators(server: Server) {
 	server.addGenerator({
 		name: 'grasslands',
 		software: 'Cobblestone',
+		minimalSize: [32, 64, 32],
 		generate: workerGenerator('./generators/grasslands.ts'),
 	});
 
 	server.addGenerator({
 		name: 'island',
 		software: 'Cobblestone',
+		minimalSize: [64, 64, 64],
 		generate: workerGenerator('./generators/island.ts'),
 	});
 
 	server.addGenerator({
 		name: 'flat',
 		software: 'Cobblestone',
+		minimalSize: [1, 8, 1],
 		generate: (sizeX: number, sizeY: number, sizeZ: number, _seed?: number) => {
 			const world = new WorldView(null, sizeX, sizeY, sizeZ);
 

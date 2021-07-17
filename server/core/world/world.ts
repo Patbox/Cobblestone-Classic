@@ -383,6 +383,7 @@ function roundDown(x: number, y: number, z: number): [number, number, number] {
 export interface WorldGenerator {
 	name: string;
 	software: string;
+	minimalSize: [number, number, number];
 	generate: (sizeX: number, sizeY: number, sizeZ: number, seed?: number) => Promise<WorldView>;
 }
 

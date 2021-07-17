@@ -2,7 +2,7 @@ import { VirtualPlayerHolder } from './player.ts';
 import { Group, Server } from './server.ts';
 import { Command, HelpPage } from './types.ts';
 
-export function setupCommands(server: Server, _commands: Map<string, Command>) {
+export function setupCommands(server: Server, commands: Map<string, Command>) {
 	server.addCommand({
 		name: 'help',
 		description: 'Contains list of all commands',
@@ -48,10 +48,9 @@ export function setupCommands(server: Server, _commands: Map<string, Command>) {
 
 				try {
 					let helpPage: HelpPage | undefined;
-
 					if (command.length == 0) {
-						const commands = Object.values(_commands);
-						size = Math.ceil(commands.length / 8);
+
+						size = Math.ceil(commands.size / 8);
 
 						const lines: string[] = [];
 
@@ -61,8 +60,10 @@ export function setupCommands(server: Server, _commands: Map<string, Command>) {
 
 						let x = 0;
 						let i = 0;
+						const commandArray = Array.from(commands);
+						
 						while (true) {
-							const cmd = commands[x + page * 8];
+							const cmd = commandArray[x + page * 8][1];
 							x += 1;
 
 							if (cmd?.permission && !ctx.checkPermission(cmd.permission)) {
@@ -86,7 +87,7 @@ export function setupCommands(server: Server, _commands: Map<string, Command>) {
 							lines: lines,
 						};
 					} else {
-						const pages = _commands.get(command)?.help ?? [];
+						const pages = commands.get(command)?.help ?? [];
 						size = pages.length;
 
 						if (size == 0) {
@@ -430,23 +431,28 @@ export function setupCommands(server: Server, _commands: Map<string, Command>) {
 									seed = 0;
 								}
 
+								if (!generator) {
+									ctx.send('&cInvalid world generator! Check &6/world generator list');
+									return;
+								}
+
+								const [minX, minY, minZ] = generator.minimalSize;
+
 								if (
 									isNaN(sizeX) ||
 									isNaN(sizeY) ||
 									isNaN(sizeZ) ||
-									sizeX < 0 ||
-									sizeY < 0 ||
-									sizeZ < 0 ||
+									sizeX <= minX ||
+									sizeY <= minY ||
+									sizeZ <= minZ ||
 									sizeX > 1024 ||
 									sizeY > 1024 ||
 									sizeZ > 1024
 								) {
-									ctx.send('&cInvalid world size!');
-									return;
-								}
+									ctx.send(`&cInvalid world size!`);
+									ctx.send(`&cMinimal suppored: &6${minX} ${minY} ${minZ}`);
+									ctx.send(`&cMaximal: &61024 1024 1024`);
 
-								if (!generator) {
-									ctx.send('&cInvalid world generator! Check &6/world generator list');
 									return;
 								}
 
@@ -529,7 +535,7 @@ export function setupCommands(server: Server, _commands: Map<string, Command>) {
 							{
 								ctx.send('&aAvailable generators:');
 								let temp = ' ';
-								Object.values(server.getAllGenerators()).forEach((w) => {
+								server.getAllGenerators().forEach((w) => {
 									temp == ' ' ? (temp += w.name) : (temp = [temp, w.name].join('&7,&f '));
 
 									if (temp.length > 50) {
