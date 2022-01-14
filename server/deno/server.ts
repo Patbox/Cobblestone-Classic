@@ -1,8 +1,8 @@
-import { TpcConnectionHandler, VoxelSrvConnectionHandler } from './networking/connection.ts';
+import { TpcConnectionHandler } from './networking/connection.ts';
 import { Player, PlayerData } from '../core/player.ts';
 import { IFileHelper, ILogger, Server } from '../core/server.ts';
 import { World } from '../core/world/world.ts';
-import { fs, createHash, wss, serve, serveTLS } from './deps.ts';
+import { fs, createHash } from './deps.ts';
 import { gzip, ungzip, msgpack, semver, uuid } from '../core/deps.ts';
 import { AuthData, Nullable, SubServices } from '../core/types.ts';
 
@@ -16,9 +16,9 @@ export class DenoServer extends Server {
 	_serverIcon: string | undefined;
 	protected _shouldLoadPlugins: boolean;
 
-	static readonly denoVersion = '1.12';
-	static readonly denoVersionMin = '1.12.0';
-	static readonly denoVersionMax = '1.13.0';
+	static readonly denoVersion = '1.17';
+	static readonly denoVersionMin = '1.17.0';
+	static readonly denoVersionMax = '1.18.0';
 
 	constructor(loadPlugins = true, devMode = false) {
 		super(fileHelper, logger, devMode);
@@ -43,9 +43,7 @@ export class DenoServer extends Server {
 		}
 
 		[...defaultFolders, 'world/backup'].forEach((x) => {
-			if (!fs.existsSync(`./${x}`)) {
-				Deno.mkdirSync(`./${x}`);
-			}
+			fs.ensureDirSync(`./${x}`);
 		});
 
 		await super._startServer();
@@ -53,9 +51,9 @@ export class DenoServer extends Server {
 
 	protected _startListening() {
 		try {
-			if (fs.existsSync('./config/server-icon.png')) {
-				const file = Deno.readFileSync('./config/server-icon.png');
+			const file = Deno.readFileSync('./config/server-icon.png');
 
+			if (file != null) {
 				this._serverIcon = btoa(String.fromCharCode.apply(null, [...file]));
 			}
 		} catch (e) {
@@ -78,50 +76,15 @@ export class DenoServer extends Server {
 
 		this.logger.log(`&aListenning to connections on port ${this.config.port}`);
 
-		if (this.config.voxelSrvPort > 0) {
-			const wsserver = this.config.VoxelSrvUseWSS
-				? serveTLS({ port: this.config.voxelSrvPort, certFile: this.config.VoxelSrvWssOptions.cert, keyFile: this.config.VoxelSrvWssOptions.key })
-				: serve({ port: this.config.voxelSrvPort });
-
-			(async () => {
-				for await (const req of wsserver) {
-					if (this.isShuttingDown) {
-						return;
-					}
-
-					const { conn, r: bufReader, w: bufWriter, headers } = req;
-					wss
-						.acceptWebSocket({
-							conn,
-							bufReader,
-							bufWriter,
-							headers,
-						})
-						.then((ws: wss.WebSocket) => {
-							const x = new VoxelSrvConnectionHandler(ws, this);
-							x._connect = (y) => this.connectPlayer(x, 'VoxelSrv', y ?? undefined);
-							x._authenticate(this);
-						})
-						.catch(async () => {
-							await req.respond({ status: 400 });
-						});
-				}
-			})();
-
-			this.logger.log(`&aListenning to VoxelSrv connections on port ${this.config.voxelSrvPort}`);
-		}
-
-		(async () => {
-			for await (const _ of Deno.signal(Deno.Signal.SIGINT)) {
-				if (this.isShuttingDown) {
-					return;
-				}
-
-				this.stopServer();
-
-				setTimeout(() => Deno.exit(), 500);
+		Deno.addSignalListener('SIGTERM', () => {
+			if (this.isShuttingDown) {
+				return;
 			}
-		})();
+
+			this.stopServer();
+
+			setTimeout(() => Deno.exit(), 500);
+		});
 
 		(async () => {
 			const buf = new Uint8Array(1024);
@@ -188,16 +151,6 @@ export class DenoServer extends Server {
 				}
 			} catch (_e) {
 				this.logger.warn(`Couldn't send heartbeat to BetaCraft!`);
-			}
-
-			try {
-				if (this.config.publicOnVoxelSrv) {
-					const address = (this.config.VoxelSrvUseWSS ? 'wss://' : 'ws://') + `${this.config.address}:${this.config.voxelSrvPort}`;
-
-					fetch(`https://voxelsrv.pb4.eu/api/addServer?ip=${address}&type=1`);
-				}
-			} catch (_e) {
-				this.logger.warn(`Couldn't send heartbeat to VoxelSrv!`);
 			}
 		};
 
@@ -353,7 +306,7 @@ export const logger: ILogger & { writeToLog: (t: string) => void; reopenFile: ()
 
 		fs.ensureDirSync('./logs');
 		logger.file = Deno.openSync(`./logs/${name}.log`, { write: true, read: true, create: true });
-	}
+	},
 };
 
 const colorMap: Record<string, string> = {

@@ -14,7 +14,7 @@ export class Server {
 	// Main informations about server
 	static readonly softwareName = 'Cobblestone';
 	static readonly softwareId = 'cobblestone';
-	static readonly softwareVersion = '0.0.15';
+	static readonly softwareVersion = '0.0.16';
 
 	static readonly targetGame = 'Minecraft Classic';
 	static readonly targetVersion = '0.30c';
@@ -29,10 +29,10 @@ export class Server {
 	readonly targetProtocol = Server.targetProtocol;
 
 	// Version of API, goes up when new methods are added
-	readonly _apiVersion = '0.0.14';
+	readonly _apiVersion = '0.0.16';
 
 	// Minimal compatible API
-	readonly _minimalApiVersion = '0.0.14';
+	readonly _minimalApiVersion = '0.0.16';
 
 	/**
 	 * Wrapper to access filesystem. Used mostly to abstract stuff
@@ -60,7 +60,7 @@ export class Server {
 	/**
 	 * All main server, player and world events
 	 */
-	readonly event = {
+	readonly event = Object.freeze({
 		PlayerConnect: new Emitter<event.PlayerConnect>(true, this.eventErrorBuilder('PlayerConnect')),
 		PlayerDisconnect: new Emitter<event.PlayerDisconnect>(true, this.eventErrorBuilder('PlayerDisconnect')),
 		PlayerChangeWorld: new Emitter<event.PlayerChangeWorld>(true, this.eventErrorBuilder('PlayerChangeWorld')),
@@ -74,7 +74,9 @@ export class Server {
 		ServerShutdown: new Emitter<Server>(false, this.eventErrorBuilder('ServerShutdown')),
 		ServerLoadingFinished: new Emitter<Server>(false, this.eventErrorBuilder('ServerLoadingFinished')),
 		ServerCommandRegistration: new Emitter<Server>(false, this.eventErrorBuilder('ServerCommandRegistration')),
-	};
+		WorldLoaded: new Emitter<World>(false, this.eventErrorBuilder('WorldLoaded')),
+		WorldUnloaded: new Emitter<World>(false, this.eventErrorBuilder('WorldUnloaded')),
+	});
 
 	readonly worlds: Map<string, World> = new Map();
 	protected readonly generators: Map<string, WorldGenerator> = new Map();
@@ -438,6 +440,7 @@ export class Server {
 				if (data != null) {
 					const world = new World(fileName, data, this);
 					this.worlds.set(fileName, world);
+					this.event.WorldLoaded._emit(world);
 					return world;
 				}
 				return null;
@@ -472,10 +475,15 @@ export class Server {
 			const x = this.saveWorld(world);
 			if (x) {
 				this.worlds.delete(name);
+				this.event.WorldUnloaded._emit(world);
 			}
-
+			
 			return x;
 		} else {
+			const world = this.worlds.get(name);
+			if (world != null) {
+				this.event.WorldUnloaded._emit(world);
+			}
 			this.worlds.delete(name);
 			return true;
 		}
@@ -906,7 +914,6 @@ export interface IFileHelper {
 export interface IConfig {
 	address: string;
 	port: number;
-	voxelSrvPort: number;
 
 	serverName: string;
 	serverMotd: string;
@@ -924,13 +931,7 @@ export interface IConfig {
 	useBetaCraftHeartbeat: boolean;
 	publicOnBetaCraft: boolean;
 
-	VoxelSrvOnlineMode: boolean;
-	publicOnVoxelSrv: boolean;
-
 	allowOffline: boolean;
-
-	VoxelSrvUseWSS: boolean;
-	VoxelSrvWssOptions: { key: string; cert: string };
 
 	messages: {
 		join: string;
@@ -949,7 +950,6 @@ export interface IConfig {
 const defaultConfig: IConfig = {
 	address: 'localhost',
 	port: 25566,
-	voxelSrvPort: 25567,
 
 	serverName: 'Cobblestone',
 	serverMotd: 'Another Minecraft Classic server!',
@@ -968,12 +968,7 @@ const defaultConfig: IConfig = {
 	useBetaCraftHeartbeat: false,
 	publicOnBetaCraft: false,
 
-	VoxelSrvOnlineMode: false,
-	publicOnVoxelSrv: false,
 	allowOffline: true,
-
-	VoxelSrvUseWSS: false,
-	VoxelSrvWssOptions: { key: '', cert: '' },
 
 	messages: {
 		join: '&e$PLAYER joined the game',

@@ -1,6 +1,6 @@
 import { Emitter } from '../../../libs/emitter.ts';
 import { Holder } from "../../types.ts";
-import { PacketReader, PacketWriter } from './packet.ts';
+import { ClassicPacketReader, ClassicPacketWriter } from './packet.ts';
 
 export class ClientPacketHandler {
 	packetIds = packetIds;
@@ -15,57 +15,53 @@ export class ClientPacketHandler {
 	Unknown = new Emitter<Uint8Array>();
 
 	_decode(buffer: Uint8Array) {
-		const reader = new PacketReader(buffer);
+		const reader = new ClassicPacketReader(buffer);
 
-		switch (reader.readByte()) {
-			case packetIds.PlayerIdentification:
-				this.PlayerIdentification._emit({
-					protocol: reader.readByte(),
-					username: reader.readString(),
-					key: reader.readString(),
-					modded: reader.readByte(),
-				});
-				break;
-			case packetIds.SetBlock:
-				this.SetBlock._emit({
-					x: reader.readShort(),
-					y: reader.readShort(),
-					z: reader.readShort(),
-					mode: reader.readByte(),
-					block: reader.readByte(),
-				});
-				break;
+		while (!reader.isFinished()) {
+			switch (reader.readByte()) {
+				case packetIds.PlayerIdentification:
+					this.PlayerIdentification._emit({
+						protocol: reader.readByte(),
+						username: reader.readString(),
+						key: reader.readString(),
+						modded: reader.readByte(),
+					});
+					break;
+				case packetIds.SetBlock:
+					this.SetBlock._emit({
+						x: reader.readShort(),
+						y: reader.readShort(),
+						z: reader.readShort(),
+						mode: reader.readByte(),
+						block: reader.readByte(),
+					});
+					break;
 
-			case packetIds.Position:
-				this.Position._emit({
-					player: reader.readByte(),
-					x: reader.readShort(),
-					y: reader.readShort(),
-					z: reader.readShort(),
-					yaw: reader.readByte(),
-					pitch: reader.readByte(),
-				});
-				break;
+				case packetIds.Position:
+					this.Position._emit({
+						player: reader.readByte(),
+						x: reader.readShort(),
+						y: reader.readShort(),
+						z: reader.readShort(),
+						yaw: reader.readByte(),
+						pitch: reader.readByte(),
+					});
+					break;
 
-			case packetIds.Message:
-				this.Message._emit({
-					unused: reader.readByte(),
-					message: reader.readString(),
-				});
-				break;
-			default:
-				this.Unknown._emit(buffer);
+				case packetIds.Message:
+					this.Message._emit({
+						unused: reader.readByte(),
+						message: reader.readString(),
+					});
+					break;
+				default:
+					this.Unknown._emit(buffer);
+			}
 		}
-
-		const lenght = packetIdsToLenght[buffer[0]] ?? 4096;
-		if (buffer.length > lenght) {
-			this._decode(buffer.slice(lenght, buffer.length));
-		}
-
 	}
 
 	encodePlayerIdentification(i: PlayerIdentification): Uint8Array {
-		const packet = new PacketWriter(packetLenght.PlayerIdentification);
+		const packet = new ClassicPacketWriter(packetLenght.PlayerIdentification);
 		packet.writeByte(packetIds.PlayerIdentification);
 		packet.writeByte(i.protocol);
 		packet.writeString(i.username);
@@ -76,7 +72,7 @@ export class ClientPacketHandler {
 	}
 
 	encodeSetBlock(i: SetBlock): Uint8Array {
-		const packet = new PacketWriter(packetLenght.SetBlock);
+		const packet = new ClassicPacketWriter(packetLenght.SetBlock);
 		packet.writeByte(packetIds.SetBlock);
 		packet.writeShort(i.x);
 		packet.writeShort(i.y);
@@ -88,7 +84,7 @@ export class ClientPacketHandler {
 	}
 
 	encodePosition(i: Position): Uint8Array {
-		const packet = new PacketWriter(packetLenght.Position);
+		const packet = new ClassicPacketWriter(packetLenght.Position);
 		packet.writeByte(packetIds.Position);
 		packet.writeByte(0xFF);
 		packet.writeShort(i.x);
@@ -99,7 +95,7 @@ export class ClientPacketHandler {
 	}
 
 	encodeMessage(i: Message): Uint8Array {
-		const packet = new PacketWriter(packetLenght.Message);
+		const packet = new ClassicPacketWriter(packetLenght.Message);
 		packet.writeByte(packetIds.Message);
 		packet.writeByte(0xFF);
 		packet.writeString(i.message);

@@ -3,7 +3,7 @@ const textEncoder = new TextEncoder();
 
 export const classicTextRegex = /[^ -~]/gi;
 
-export class PacketReader {
+export class ClassicPacketReader {
 	buffer: Uint8Array;
 	view: DataView;
 	pos: number;
@@ -43,9 +43,17 @@ export class PacketReader {
 		this.pos += 1024;
 		return x;
 	}
+
+	isFinished(): boolean {
+		return this.pos >= this.buffer.length;
+	}
+
+	resetPos(): void {
+		this.pos = 0;
+	}
 }
 
-export class PacketWriter {
+export class ClassicPacketWriter {
 	buffer: Uint8Array;
 	view: DataView;
 	pos: number;

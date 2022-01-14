@@ -7,8 +7,8 @@ export function makeMurmur(seed: number) {
 
     return function murmur32(..._args: number[]) {
 
-        var numargs = arguments.length
-        var h1 = seed
+        const numargs = arguments.length
+        let h1 = seed
 
         for (let i = 0; i < numargs; i++) {
             let k1 = arguments[i] | 0

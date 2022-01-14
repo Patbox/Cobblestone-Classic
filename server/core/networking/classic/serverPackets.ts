@@ -1,6 +1,6 @@
 import { Emitter } from '../../../libs/emitter.ts';
 import { Holder } from "../../types.ts";
-import { PacketReader, PacketWriter } from './packet.ts';
+import { ClassicPacketReader, ClassicPacketWriter } from './packet.ts';
 
 export class ServerPacketHandler {
 	packetIds = packetIds;
@@ -26,7 +26,7 @@ export class ServerPacketHandler {
 	Unknown = new Emitter<Uint8Array>();
 
 	_decode(buffer: Uint8Array) {
-		const reader = new PacketReader(buffer);
+		const reader = new ClassicPacketReader(buffer);
 
 		switch (reader.readByte()) {
 			case packetIds.ServerIdentification:
@@ -143,7 +143,7 @@ export class ServerPacketHandler {
 	}
 
 	encodeServerIdentification(i: ServerIdentification): Uint8Array {
-		const packet = new PacketWriter(packetLenght.ServerIdentification);
+		const packet = new ClassicPacketWriter(packetLenght.ServerIdentification);
 		packet.writeByte(packetIds.ServerIdentification);
 		packet.writeByte(i.protocol);
 		packet.writeString(i.name);
@@ -154,21 +154,21 @@ export class ServerPacketHandler {
 	}
 
 	encodePing(): Uint8Array {
-		const packet = new PacketWriter(packetLenght.Ping);
+		const packet = new ClassicPacketWriter(packetLenght.Ping);
 		packet.writeByte(packetIds.Ping);
 
 		return packet.buffer;
 	}
 
 	encodeLevelInitialize(): Uint8Array {
-		const packet = new PacketWriter(packetLenght.LevelInitialize);
+		const packet = new ClassicPacketWriter(packetLenght.LevelInitialize);
 		packet.writeByte(packetIds.LevelInitialize);
 
 		return packet.buffer;
 	}
 
 	encodeLevelData(i: LevelData): Uint8Array {
-		const packet = new PacketWriter(packetLenght.LevelData);
+		const packet = new ClassicPacketWriter(packetLenght.LevelData);
 		packet.writeByte(packetIds.LevelData);
 		packet.writeShort(i.chunkLenght);
 		packet.writeByteArray(i.chunkData);
@@ -178,7 +178,7 @@ export class ServerPacketHandler {
 	}
 
 	encodeLevelFinalize(i: LevelFinalize): Uint8Array {
-		const packet = new PacketWriter(packetLenght.LevelFinalize);
+		const packet = new ClassicPacketWriter(packetLenght.LevelFinalize);
 		packet.writeByte(packetIds.LevelFinalize);
 		packet.writeShort(i.x);
 		packet.writeShort(i.y);
@@ -188,7 +188,7 @@ export class ServerPacketHandler {
 	}
 
 	encodeSetBlock(i: SetBlock): Uint8Array {
-		const packet = new PacketWriter(packetLenght.SetBlock);
+		const packet = new ClassicPacketWriter(packetLenght.SetBlock);
 		packet.writeByte(packetIds.SetBlock);
 		packet.writeShort(i.x);
 		packet.writeShort(i.y);
@@ -199,7 +199,7 @@ export class ServerPacketHandler {
 	}
 
 	encodeSpawnPlayer(i: SpawnPlayer): Uint8Array {
-		const packet = new PacketWriter(packetLenght.SpawnPlayer);
+		const packet = new ClassicPacketWriter(packetLenght.SpawnPlayer);
 		packet.writeByte(packetIds.SpawnPlayer);
 		packet.writeSByte(i.player);
 		packet.writeString(i.name);
@@ -213,7 +213,7 @@ export class ServerPacketHandler {
 	}
 
 	encodeTeleport(i: Teleport): Uint8Array {
-		const packet = new PacketWriter(packetLenght.Teleport);
+		const packet = new ClassicPacketWriter(packetLenght.Teleport);
 		packet.writeByte(packetIds.Teleport);
 		packet.writeSByte(i.player);
 		packet.writeShort(i.x);
@@ -226,7 +226,7 @@ export class ServerPacketHandler {
 	}
 
 	encodePositionAndOrientation(i: PositionAndOrientation): Uint8Array {
-		const packet = new PacketWriter(packetLenght.PositionAndOrientation);
+		const packet = new ClassicPacketWriter(packetLenght.PositionAndOrientation);
 		packet.writeByte(packetIds.PositionAndOrientation);
 		packet.writeSByte(i.player);
 		packet.writeSByte(i.x);
@@ -239,7 +239,7 @@ export class ServerPacketHandler {
 	}
 
 	encodePosition(i: Position): Uint8Array {
-		const packet = new PacketWriter(packetLenght.Position);
+		const packet = new ClassicPacketWriter(packetLenght.Position);
 		packet.writeByte(packetIds.Position);
 		packet.writeSByte(i.player);
 		packet.writeSByte(i.x);
@@ -250,7 +250,7 @@ export class ServerPacketHandler {
 	}
 
 	encodeOrientation(i: Orientation): Uint8Array {
-		const packet = new PacketWriter(packetLenght.Orientation);
+		const packet = new ClassicPacketWriter(packetLenght.Orientation);
 		packet.writeByte(packetIds.Orientation);
 		packet.writeSByte(i.player);
 		packet.writeByte(i.yaw);
@@ -260,7 +260,7 @@ export class ServerPacketHandler {
 	}
 
 	encodeDespawnPlayer(i: DespawnPlayer): Uint8Array {
-		const packet = new PacketWriter(packetLenght.DespawnPlayer);
+		const packet = new ClassicPacketWriter(packetLenght.DespawnPlayer);
 		packet.writeByte(packetIds.DespawnPlayer);
 		packet.writeSByte(i.player);
 
@@ -268,7 +268,7 @@ export class ServerPacketHandler {
 	}
 
 	encodeMessage(i: Message): Uint8Array {
-		const packet = new PacketWriter(packetLenght.Message);
+		const packet = new ClassicPacketWriter(packetLenght.Message);
 		packet.writeByte(packetIds.Message);
 		packet.writeSByte(i.player);
 		packet.writeString(i.message);
@@ -277,7 +277,7 @@ export class ServerPacketHandler {
 	}
 
 	encodeDisconnect(i: Disconnect): Uint8Array {
-		const packet = new PacketWriter(packetLenght.Disconnect);
+		const packet = new ClassicPacketWriter(packetLenght.Disconnect);
 		packet.writeByte(packetIds.Disconnect);
 		packet.writeString(i.reason);
 
@@ -285,7 +285,7 @@ export class ServerPacketHandler {
 	}
 
 	encodeUserType(i: UserType): Uint8Array {
-		const packet = new PacketWriter(packetLenght.UserType);
+		const packet = new ClassicPacketWriter(packetLenght.UserType);
 		packet.writeByte(packetIds.UserType);
 		packet.writeByte(i.type);
 
