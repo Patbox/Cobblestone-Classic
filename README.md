@@ -9,7 +9,7 @@ Cobblestone is a server for Minecraft Classic 0.30. It's written in Typescript a
 - Multiworld support
 - Easy to modify - It's written in TypeScript
 - Custom plugin support
-- Works with Betacraft (~~including online mode~~)
+- Works with Betacraft (including online mode)
 - Moddern Mojang UUID support (with online mode)
 - Stores worlds in [ClassicWorld](https://wiki.vg/ClassicWorld_file_format) format
 - Uses Deno - no more big `node_modules` folder

@@ -14,7 +14,7 @@ export class Server {
 	// Main informations about server
 	static readonly softwareName = 'Cobblestone';
 	static readonly softwareId = 'cobblestone';
-	static readonly softwareVersion = '0.0.16';
+	static readonly softwareVersion = '0.0.17';
 
 	static readonly targetGame = 'Minecraft Classic';
 	static readonly targetVersion = '0.30c';
@@ -29,7 +29,7 @@ export class Server {
 	readonly targetProtocol = Server.targetProtocol;
 
 	// Version of API, goes up when new methods are added
-	readonly _apiVersion = '0.0.16';
+	readonly _apiVersion = '0.0.17';
 
 	// Minimal compatible API
 	readonly _minimalApiVersion = '0.0.16';
@@ -320,10 +320,10 @@ export class Server {
 					const result = await this.authenticatePlayer({
 						uuid: overrides?.uuid ?? playerInfo.username.toLowerCase(),
 						username: overrides?.username ?? playerInfo.username,
+						authProvider: overrides?.authProvider ?? 'None',
 						service: overrides?.service ?? 'Minecraft',
 						secret: overrides?.secret ?? playerInfo.key,
 						authenticated: overrides?.authenticated ?? false,
-						subService: overrides?.subService ?? null,
 					});
 
 					if (result.allow) {
@@ -332,11 +332,11 @@ export class Server {
 							return;
 						}
 
-						const subService = result.auth.subService ? `/${result.auth.subService}` : '';
+						const authProvider = result.auth.authProvider ? `/${result.auth.authProvider}` : '';
 						this.logger.conn(
 							result.auth.service == 'Unknown'
 								? `User ${result.auth.username} (${result.auth.uuid}) doesn't use any auth...`
-								: `User ${result.auth.username} (${result.auth.uuid}) is logged with ${result.auth.service}${subService} auth!`
+								: `User ${result.auth.username} (${result.auth.uuid}) is logged with ${result.auth.service} (${authProvider}) auth!`
 						);
 
 						const player = new Player(
@@ -924,12 +924,15 @@ export interface IConfig {
 
 	defaultWorldName: string;
 
-	classicOnlineMode: boolean;
+	onlineMode: boolean;
 	//useMineOnlineHeartbeat: boolean;
 	//publicOnMineOnline: boolean;
 
 	useBetaCraftHeartbeat: boolean;
 	publicOnBetaCraft: boolean;
+
+	useClassiCubeHeartbeat: boolean;
+	publicOnClassiCube: boolean;
 
 	allowOffline: boolean;
 
@@ -960,13 +963,16 @@ const defaultConfig: IConfig = {
 
 	defaultWorldName: 'main',
 
-	classicOnlineMode: false,
+	onlineMode: true,
 
 	//useMineOnlineHeartbeat: false,
 	//publicOnMineOnline: false,
 
 	useBetaCraftHeartbeat: false,
 	publicOnBetaCraft: false,
+
+	useClassiCubeHeartbeat: false,
+	publicOnClassiCube: false,
 
 	allowOffline: true,
 

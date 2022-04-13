@@ -2,37 +2,28 @@ import { TpcConnectionHandler } from './networking/connection.ts';
 import { Player, PlayerData } from '../core/player.ts';
 import { IFileHelper, ILogger, Server } from '../core/server.ts';
 import { World } from '../core/world/world.ts';
-import { fs, createHash } from './deps.ts';
-import { gzip, ungzip, msgpack, semver, uuid } from '../core/deps.ts';
-import { AuthData, Nullable, SubServices } from '../core/types.ts';
+import { fs, crypto2 } from './deps.ts';
+import { gzip, ungzip, msgpack, semver } from '../core/deps.ts';
+import { AuthData, AuthProvider, Nullable, Services } from '../core/types.ts';
 
 const textEncoder = new TextEncoder();
 
 export const defaultFolders = ['world', 'player', 'config', 'logs', 'plugins'];
 
 export class DenoServer extends Server {
-	//protected _saltMineOnline: string;
-	protected _saltBetaCraft: string;
+	protected _salt = <Record<AuthProvider, string>>{};
 	_serverIcon: string | undefined;
 	protected _shouldLoadPlugins: boolean;
 
-	static readonly denoVersion = '1.17';
-	static readonly denoVersionMin = '1.17.0';
-	static readonly denoVersionMax = '1.18.0';
+	static readonly denoVersion = '1.20.x';
+	static readonly denoVersionMin = '1.20.0';
+	static readonly denoVersionMax = '1.21.0';
 
 	constructor(loadPlugins = true, devMode = false) {
 		super(fileHelper, logger, devMode);
 		this._shouldLoadPlugins = loadPlugins;
-		/*{
-			const hash = createHash('md5');
-			hash.update(<string>uuid.v4());
-			this._saltMineOnline = hash.toString();
-		}*/
-		{
-			const hash = createHash('md5');
-			hash.update(<string>uuid.v4.generate());
-			this._saltBetaCraft = hash.toString();
-		}
+		this._salt["Betacraft"] = crypto.randomUUID().replaceAll("-", "");
+		this._salt["ClassiCube"] = crypto.randomUUID().replaceAll("-", "");
 	}
 
 	async _startServer() {
@@ -57,8 +48,7 @@ export class DenoServer extends Server {
 				this._serverIcon = btoa(String.fromCharCode.apply(null, [...file]));
 			}
 		} catch (e) {
-			this.logger.error('Server icon (server-icon.png) is invalid!');
-			this.logger.error(e);
+			this.logger.warn('Server icon (server-icon.png) is invalid or doesn\'t exist!');
 		}
 
 		const listener = Deno.listen({ port: this.config.port });
@@ -76,15 +66,19 @@ export class DenoServer extends Server {
 
 		this.logger.log(`&aListenning to connections on port ${this.config.port}`);
 
-		Deno.addSignalListener('SIGTERM', () => {
-			if (this.isShuttingDown) {
-				return;
-			}
+		try {
+			Deno.addSignalListener('SIGTERM', () => {
+				if (this.isShuttingDown) {
+					return;
+				}
 
-			this.stopServer();
+				this.stopServer();
 
-			setTimeout(() => Deno.exit(), 500);
-		});
+				setTimeout(() => Deno.exit(), 500);
+			});
+		} catch (e) {
+			//noop
+		}
 
 		(async () => {
 			const buf = new Uint8Array(1024);
@@ -103,59 +97,37 @@ export class DenoServer extends Server {
 			}
 		})();
 
-		const f = () => {
+		const heartBeat = () => {
 			const players: string[] = [];
 			Object.values(this.players).forEach((p) => players.push((<Player>p).username));
-
-			/*try {
-				if (this.config.publicOnMineOnline) {
-					const obj = {
-						name: this.config.serverName,
-						ip: this.config.address,
-						port: this.config.port,
-						onlinemode: this.config.classicOnlineMode,
-						'verify-names': this.config.classicOnlineMode,
-						md5: '90632803F45C15164587256A08C0ECB4',
-						whitelisted: false,
-						max: this.config.maxPlayerCount,
-						motd: this.config.serverMotd,
-						serverIcon: this._serverIcon,
-						players,
-					};
-
-					fetch('https://mineonline.codie.gg/api/servers', {
-						method: 'POST',
-						body: JSON.stringify(obj),
-						headers: { 'Content-Type': 'application/json' },
-					});
-				}
-
-				if (this.config.useMineOnlineHeartbeat) {
-					fetch(
-						`https://mineonline.codie.gg/heartbeat.jsp?port=${this.config.port}&max=${this.config.maxPlayerCount}&name=${escape(
-							this.config.serverName
-						)}&public=${this.config.publicOnMineOnline ? 'True' : 'False'}&version=7&salt=${this._saltMineOnline}&users=${players.length}`
-					);
-				}
-			} catch (e) {
-				this.logger.warn(`Couldn't send heartbeat to MineOnline!`);
-			}*/
 
 			try {
 				if (this.config.useBetaCraftHeartbeat) {
 					fetch(
 						`https://betacraft.pl/heartbeat.jsp?port=${this.config.port}&max=${this.config.maxPlayerCount}&name=${escape(
 							this.config.serverName
-						)}&public=${this.config.publicOnBetaCraft ? 'True' : 'False'}&version=7&salt=${this._saltBetaCraft}&users=${players.length}`
+						)}&public=${this.config.publicOnBetaCraft ? 'True' : 'False'}&version=7&salt=${this._salt["Betacraft"]}&users=${players.length}`
 					);
 				}
 			} catch (_e) {
 				this.logger.warn(`Couldn't send heartbeat to BetaCraft!`);
 			}
+
+			try {
+				if (this.config.useClassiCubeHeartbeat) {
+					fetch(
+						`http://www.classicube.net/api/server/heartbeat/?port=${this.config.port}&max=${this.config.maxPlayerCount}&name=${escape(
+							this.config.serverName
+						)}&public=${this.config.publicOnClassiCube ? 'True' : 'False'}&version=7&salt=${this._salt["ClassiCube"]}&users=${players.length}`
+					);
+				}
+			} catch (_e) {
+				this.logger.warn(`Couldn't send heartbeat to ClassiCube!`);
+			}
 		};
 
-		setTimeout(f, 2000);
-		setInterval(f, 1000 * 60);
+		setTimeout(heartBeat, 2000);
+		setInterval(heartBeat, 1000 * 60);
 	}
 
 	stopServer() {
@@ -169,16 +141,25 @@ export class DenoServer extends Server {
 			return { allow: true, auth: data };
 		}
 
-		if (this.config.classicOnlineMode) {
-			let subService: Nullable<SubServices> = null;
+		if (this.config.onlineMode) {
+			const encoder = new TextEncoder();
+			const decoder = new TextDecoder();
+			let service: Nullable<Services> = null;
+			let authProvider: AuthProvider = 'None';
 
-			const hash = createHash('md5');
-			hash.update(this._saltBetaCraft + data.username);
-			if (hash.toString() == data.secret) {
-				subService = 'Betacraft';
+			const classicCheck = (provider: AuthProvider) => {
+				return decoder.decode(crypto2.digest("MD5", encoder.encode(this._salt[provider] + data.username), undefined)) == data.secret;
 			}
 
-			if (subService != null) {
+			if (classicCheck("Betacraft")) {
+				service = "Minecraft";
+				authProvider = "Betacraft";
+			} else if (classicCheck("ClassiCube")) {
+				service = "ClassiCube";
+				authProvider = "ClassiCube";
+			}
+
+			if (service == 'Minecraft') {
 				const moj: { id: string; name: string; error?: string } = await (
 					await fetch('https://api.mojang.com/users/profiles/minecraft/' + data.username)
 				).json();
@@ -192,22 +173,34 @@ export class DenoServer extends Server {
 							service: 'Minecraft',
 							secret: null,
 							authenticated: true,
-							subService: subService,
+							authProvider: authProvider,
 						},
 					};
 				}
+			} else if (service != null) {
+				return {
+					allow: true,
+					auth: {
+						uuid: authProvider.toLowerCase() + '-' + data.username,
+						username: data.username,
+						service: service,
+						secret: null,
+						authenticated: true,
+						authProvider: authProvider,
+					},
+				};
 			}
 		}
 
-		if (this.config.allowOffline || !this.config.classicOnlineMode) {
+		if (this.config.allowOffline || !this.config.onlineMode) {
 			return {
 				auth: {
-					username: this.config.classicOnlineMode ? `*${data.username}` : data.username,
+					username: this.config.onlineMode ? `*${data.username}` : data.username,
 					uuid: 'offline-' + data.username.toLowerCase(),
 					secret: null,
 					service: 'Unknown',
 					authenticated: true,
-					subService: null,
+					authProvider: "None",
 				},
 				allow: true,
 			};
@@ -228,7 +221,7 @@ export class DenoServer extends Server {
 
 const colorsTag = /&[0-9a-fl-or]/gi;
 
-export const logger: ILogger & { writeToLog: (t: string) => void; reopenFile: () => void; file?: Deno.File; openedAt?: number } = {
+export const logger: ILogger & { writeToLog: (t: string) => void; reopenFile: () => void; file?: Deno.FsFile; openedAt?: number } = {
 	log: (text: string) => {
 		const out = `&8[&f${hourNow()}&8] &f${text}`;
 

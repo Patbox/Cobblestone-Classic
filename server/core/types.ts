@@ -13,14 +13,15 @@ export interface Position {
 
 export type Nullable<T> = null | T;
 
-export type Services = 'Unknown' | 'Minecraft' | 'VoxelSrv' | 'ClassiCube';
+export type Services = 'Unknown' | 'Minecraft' | 'ClassiCube';
 
-export type SubServices = 'Betacraft';
+export type AuthProvider = 'None' | 'Mojang' | 'Betacraft' | 'ClassiCube';
+
 
 export interface AuthData {
 	username: string;
+	authProvider: AuthProvider;
 	service: Services;
-	subService: Nullable<SubServices>;
 	uuid: Nullable<string>;
 	secret: Nullable<string>;
 	authenticated: boolean;

@@ -61,8 +61,8 @@ export function setupCommands(server: Server, commands: Map<string, Command>) {
 						let x = 0;
 						let i = 0;
 						const commandArray = Array.from(commands);
-						
-						while (true) {
+
+						while (commandArray[x + page * 8]) {
 							const cmd = commandArray[x + page * 8][1];
 							x += 1;
 
@@ -89,7 +89,6 @@ export function setupCommands(server: Server, commands: Map<string, Command>) {
 					} else {
 						const pages = commands.get(command)?.help ?? [];
 						size = pages.length;
-
 						if (size == 0) {
 							return;
 						}
@@ -109,8 +108,13 @@ export function setupCommands(server: Server, commands: Map<string, Command>) {
 						ctx.send(`&cThis help page doesn't exist!`);
 					}
 				} catch (e) {
-					server.logger.error(`${ctx.player?.username ?? 'Console'} tried to excute ${ctx.command} and it failed!`);
-					server.logger.error(e);
+					server.logger.error(`${ctx.player?.username ?? 'Console'} tried to execute ${ctx.command} and it failed!`);
+					if (e instanceof TypeError) {
+						server.logger.error(e.message);
+						if (e.stack) server.logger.error(e.stack);
+					} else {
+						server.logger.error(e);
+					}
 					ctx.send('&cError occured while executing this command.');
 				}
 			} catch {
