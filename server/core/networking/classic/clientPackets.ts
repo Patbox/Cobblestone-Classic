@@ -118,11 +118,13 @@ export const packetLenght = {
 	Message: 66,
 };
 
-const packetIdsToLenght: Record<number, number> = {};
+const packetIdsToLenghtTmp: Record<number, number> = {};
 
 for (const x in packetIds) {
-	packetIdsToLenght[(<Holder<number>>packetIds)[x]] = (<Holder<number>>packetLenght)[x];
+	packetIdsToLenghtTmp[(<Holder<number>>packetIds)[x]] = (<Holder<number>>packetLenght)[x];
 }
+
+export const packetIdsToLenght = packetIdsToLenghtTmp;
 
 export interface PlayerIdentification {
 	protocol: number;

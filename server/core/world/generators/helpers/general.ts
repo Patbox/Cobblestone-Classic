@@ -23,5 +23,4 @@ export function createWorkerGenerator(pos: URL): (sizeX: number, sizeY: number, 
 export async function sendDataToMain(worker: Worker, world: WorldView) {
 	const data = world.getRawBlockData();
 	await worker.postMessage({ type: 'data', spawnPoint: world.getSpawnPoint(), blockData: data });
-
 }

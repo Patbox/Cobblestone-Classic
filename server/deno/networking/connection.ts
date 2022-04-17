@@ -1,30 +1,37 @@
-import { ConnectionHandler } from '../../core/networking/connection.ts';
+import { ConnectionHandler, WrappedConnectionHandler } from '../../core/networking/connection.ts';
 import { Server } from '../../core/server.ts';
-import { PacketWriter as MCPacketWriter, PacketReader as MCPacketReader } from './minecraft/packet.ts';
-import { DenoServer } from '../server.ts';
+import { PacketReader, PacketWriter } from './minecraft/packet.ts';
+import { Nullable } from "../../core/types.ts";
+import { ClassicConnectionHandler } from "../../core/networking/classic/connection.ts";
+import { packetIdsToLenght } from "../../core/networking/classic/clientPackets.ts";
+import { MCProtocolHandler } from "./minecraft/handler.ts";
 
-export class TpcConnectionHandler extends ConnectionHandler {
-	_conn: Deno.Conn | null = null;
+let idBase = 0;
+
+export class TpcConnectionHandler extends WrappedConnectionHandler {
+	_conn: Nullable<Deno.Conn>;
 	protected _buffer: Uint8Array;
-	protected _callback: (s: ConnectionHandler) => void;
-	protected _isClassic = false;
+	private _server: Server;
+	public _handler: Nullable<ConnectionHandler> = null;
+	private _classicHandler: Nullable<ClassicConnectionHandler> = null;
+	private _modernHandler: Nullable<MCProtocolHandler> = null;
 
-	constructor(conn: Deno.Conn, server: Server, callback: (s: ConnectionHandler) => void) {
-		super(server, (<Deno.NetAddr>conn.remoteAddr).hostname, (<Deno.NetAddr>conn.remoteAddr).port);
+	private id = idBase++;
 
+	constructor(conn: Deno.Conn, server: Server) {
+		super();
+		this._server = server;
 		this._conn = conn;
-		this._callback = callback;
-		this._buffer = new Uint8Array(4096);
+
+		(this._conn as Deno.TcpConn).setKeepAlive();
+
+		(this._conn as Deno.TcpConn).setNoDelay()
+		this._buffer = new Uint8Array(1024 * 1024 * 10);
 		this.loop(conn);
-		this.isConnected = true;
 	}
 
-	async _send(packet: Uint8Array) {
-		try {
-			await this._conn?.write(packet);
-		} catch (e) {
-			this.handleError(e);
-		}
+	getHandler(): Nullable<ConnectionHandler> {
+		return this._handler;
 	}
 
 	protected async loop(conn: Deno.Conn): Promise<void> {
@@ -33,10 +40,12 @@ export class TpcConnectionHandler extends ConnectionHandler {
 				const chunks = await this.read(conn);
 				if (chunks === null) break;
 
-				if (this._isClassic) {
-					this._clientPackets._decode(chunks);
+				if (this._classicHandler) {
+					this._classicHandler._clientPackets._decode(chunks);
+				} else if (this._modernHandler) {
+					this._modernHandler._decode(chunks);
 				} else {
-					this.checkIfClassic(chunks);
+					this.decodeFirstPacket(chunks);
 				}
 			}
 		} catch (e) {
@@ -46,85 +55,96 @@ export class TpcConnectionHandler extends ConnectionHandler {
 		this.close();
 	}
 
-	protected checkIfClassic(c: Uint8Array) {
-		if (c[0] == 0x00 && c.length == this._clientPackets.packetLenght[0x00]) {
-			this._callback(this);
-			this._isClassic = true;
-			this._clientPackets._decode(c);
+	protected decodeFirstPacket(c: Uint8Array) {
+		if (this._conn == null) {
 			return;
 		}
 
-		const data = new MCPacketReader(c);
+		if (c[0] == 0x00 && c.length == packetIdsToLenght[0x00]) {
+			this._classicHandler = new ClassicConnectionHandler(this._server, (<Deno.NetAddr>this._conn.remoteAddr).hostname, (<Deno.NetAddr>this._conn.remoteAddr).port, (d) => this._send(d));
+			this._handler = this._classicHandler;
+			this._classicHandler._clientPackets._decode(c);
+			this._server.logger.conn(`Connection from ${this.getIp()}:${this.getPort()} with ${this.getClient()}`);
+			return;
+		}	
 
-		const id = data.readVarInt();
-		if (id == 0 && c.length > 2) {
-			data.readVarInt(); // Protocol
-			data.readString(); // Address
-			data.readUShort(); // Port
+		if (this._server.config.enableModernMCProtocol) {
+			try {
+				const data = new PacketReader(c);
+				data.readVarInt(); // lenght
+				const id = data.readVarInt();
 
-			const state = data.readVarInt();
+				if (id == 0 && c.length > 1) {
+					this._modernHandler = new MCProtocolHandler(this._server, data.readVarInt(), data.readString(), data.readUShort(), data.readVarInt(), 
+					(d) => this._send(d),
+					(h, a) => {
+						this._handler = h;
+						this._server.addPlayer(a, this);
+					},
+					() => this.close());
 
-			if (!this._conn) return;
-
-			if (state == 1) {
-				const data = new MCPacketWriter(0x00)
-					.writeString(
-						JSON.stringify({
-							version: {
-								name: 'Classic 0.30',
-								protocol: 7,
-							},
-							description: {
-								text: `${this._server.config.serverName.replaceAll('&', '§')}\n${this._server.config.serverMotd.replaceAll('&', '§')}`,
-							},
-							favicon: (<DenoServer>this._server)._serverIcon,
-						})
-					)
-					.toPacket();
-				this._conn.write(data);
-			} else {
-				this._conn.write(
-					new MCPacketWriter(0x00)
-						.writeString(
-							JSON.stringify({
-								text: `You need to use Minecraft Classic 0.30 (or compatible) client!`,
-							})
-						)
-						.toPacket()
-				);
+					if (data.buffer.length > data.pos) {
+						this._modernHandler._decode(c.slice(data.pos, data.buffer.length));
+					}
+				}
+			} catch (_e) {
+				// noop
 			}
-		} else if (id == 1) {
-			const x = data.readLong();
-			this._conn?.write(new MCPacketWriter(0x01, 4).writeLong(x).toPacket());
+		}
+	}
+
+	async _send(packet: Uint8Array) {
+		try {
+			await this._conn?.write(packet);	
+
+		} catch (e) {
+			this.handleError(e);
 		}
 	}
 
 	protected async read(conn: Deno.Conn): Promise<Uint8Array | null> {
-		let read: number | null;
-
 		try {
-			read = await conn.read(this._buffer);
-			if (read === null) return null;
+			const read = await conn.read(this._buffer);
+
+			if (read == null) {
+				return null;
+			} 
+
+			const out = this._buffer.slice(0, read);
+			return out;
 		} catch (_error) {
 			return null;
 		}
-
-		const bytes = this._buffer.subarray(0, read);
-		return bytes;
 	}
 
 	protected close(triggerDisconnect = true): void {
-		if (this._conn === null) {
+		if (this._conn == null) {
 			return;
 		}
-
 		try {
 			this._conn?.close();
+		} catch (_e) {
+			// no-op
 		} finally {
 			this._conn = null;
 			if (triggerDisconnect) {
 				this.disconnect('');
 			}
+		}
+	}
+
+	getIp() {
+		return (<Deno.NetAddr>this?._conn?.remoteAddr)?.hostname ?? "UNDEFINED";
+	}
+
+	getPort() {
+		return (<Deno.NetAddr>this?._conn?.remoteAddr)?.port ?? 0
+	}
+
+	protected handleError(e: unknown, triggerDisconnect = true) {
+		this._server.logger.conn(`Error occured with connection ${this.getIp()}:${this.getPort()} (${this._handler?.getPlayer()?.uuid ?? 'unknown'})! ${e}`);
+		if (triggerDisconnect) {
+			this.disconnect(`${e}`);
 		}
 	}
 }

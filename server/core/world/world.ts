@@ -4,8 +4,9 @@ import type { Nullable, Position, Services, XYZ } from '../types.ts';
 
 import { Byte, decode as decodeNBT, encode as encodeNBT, Short, TagObject } from '../../libs/nbt/index.ts';
 
-import { uuid, uuidHelpers } from '../deps.ts';
 import { Block, lastBlockId } from './blocks.ts';
+
+import * as uuid from '../uuid.ts';
 
 export interface IWorldView {
 	setBlock(x: number, y: number, z: number, block: Block): boolean;
@@ -113,6 +114,7 @@ export class World extends WorldView {
 	readonly players: Set<Player> = new Set();
 
 	name: string;
+	dirty = false;
 
 	readonly timeCreated: bigint;
 	readonly createdBy: {
@@ -140,7 +142,7 @@ export class World extends WorldView {
 		this._server = server;
 
 		this.fileName = fileName;
-		this.uuid = data.uuid ?? uuid.v4.generate();
+		this.uuid = data.uuid ?? crypto.randomUUID();
 		this.name = data.name ?? fileName;
 
 		this.timeCreated = data.timeCreated ?? BigInt(Date.now());
@@ -155,6 +157,7 @@ export class World extends WorldView {
 
 	setBlockId(x: number, y: number, z: number, block: number): boolean {
 		const out = super.setBlockId(x, y, z, block);
+		this.dirty = true;
 		if (out) {
 			this.players.forEach((p) => p._connectionHandler.setBlock(x, y, z, block));
 		}
@@ -162,8 +165,12 @@ export class World extends WorldView {
 		return out;
 	}
 
-	save() {
-		this._server.saveWorld(this);
+	save(force = false): boolean {
+		if (this.dirty || force) {
+			this._server.saveWorld(this);
+			return true;
+		}
+		return false;
 	}
 
 	backup() {
@@ -271,7 +278,7 @@ export class World extends WorldView {
 		return encodeNBT('ClassicWorld', {
 			FormatVersion: new Byte(1),
 			Name: this.name,
-			UUID: uuidHelpers.uuidToBytes(this.uuid),
+			UUID: uuid.stringToBytes(this.uuid),
 			X: new Short(this.size[0]),
 			Y: new Short(this.size[1]),
 			Z: new Short(this.size[2]),
@@ -309,7 +316,7 @@ export class World extends WorldView {
 
 			const main = <TagObject>decoded.value;
 
-			const id = uuidHelpers.bytesToUuid(<Uint8Array>main.UUID);
+			const id = uuid.bytesToString(<Uint8Array>main.UUID);
 			const blocks = <Uint8Array>main.BlockArray;
 			const blocks2 = <Uint8Array | undefined>main.BlockArray2;
 

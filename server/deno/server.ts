@@ -47,7 +47,7 @@ export class DenoServer extends Server {
 			if (file != null) {
 				this._serverIcon = btoa(String.fromCharCode.apply(null, [...file]));
 			}
-		} catch (e) {
+		} catch (_e) {
 			this.logger.warn('Server icon (server-icon.png) is invalid or doesn\'t exist!');
 		}
 
@@ -58,9 +58,7 @@ export class DenoServer extends Server {
 				if (this.isShuttingDown) {
 					return;
 				}
-				new TpcConnectionHandler(conn, this, (s) => {
-					this.connectPlayer(s);
-				});
+				new TpcConnectionHandler(conn, this);
 			}
 		})();
 
@@ -76,7 +74,7 @@ export class DenoServer extends Server {
 
 				setTimeout(() => Deno.exit(), 500);
 			});
-		} catch (e) {
+		} catch (_e) {
 			//noop
 		}
 
@@ -528,7 +526,7 @@ const fileHelper: IFileHelper = {
 
 			for (const dirEntry of Deno.readDirSync('./player/')) {
 				if (dirEntry.isFile && dirEntry.name.endsWith('.cpd')) {
-					out.push(dirEntry.name.substr(0, dirEntry.name.length - 5));
+					out.push(dirEntry.name.slice(0, dirEntry.name.length - 5));
 				}
 			}
 

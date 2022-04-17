@@ -14,7 +14,7 @@ export class Server {
 	// Main informations about server
 	static readonly softwareName = 'Cobblestone';
 	static readonly softwareId = 'cobblestone';
-	static readonly softwareVersion = '0.0.17';
+	static readonly softwareVersion = '0.0.18';
 
 	static readonly targetGame = 'Minecraft Classic';
 	static readonly targetVersion = '0.30c';
@@ -29,7 +29,7 @@ export class Server {
 	readonly targetProtocol = Server.targetProtocol;
 
 	// Version of API, goes up when new methods are added
-	readonly _apiVersion = '0.0.17';
+	readonly _apiVersion = '0.0.18';
 
 	// Minimal compatible API
 	readonly _minimalApiVersion = '0.0.16';
@@ -234,7 +234,14 @@ export class Server {
 
 			let tick = 0n;
 			this._worldTickInterval = setInterval(() => {
-				Object.values(this.worlds).forEach((world) => world._tick(tick));
+				for (const [,world] of this.worlds) {
+					world._tick(tick)
+				}
+
+				for (const [,player] of this.players) {
+					player._connectionHandler.tick()
+				}
+
 				tick++;
 			}, 1000 / 20);
 
@@ -295,86 +302,49 @@ export class Server {
 	}
 
 	/**
-	 * Connects player (can be virtual!) to server.
+	 * Adds player (can be virtual!) to server.
 	 *
+	 * @param auth auth information about player
 	 * @param conn Main connection handler, used for handling packets
-	 * @param client Name of player's client, defaults to `Classic`
-	 * @param overrides Allows to override authentication data
 	 */
-	connectPlayer(conn: ConnectionHandler, client?: string, overrides?: AuthData) {
-		try {
-			conn._server = this;
-			this.logger.conn(`Connection from ${conn.ip}:${conn.port}...`);
-			conn._clientPackets.PlayerIdentification.once(async ({ value: playerInfo }) => {
-				try {
-					if (!conn.setProtocol(playerInfo.protocol)) {
-						conn.disconnect('Unsupported protocol!');
-						return;
-					} else if (playerInfo.username.length > 32 || playerInfo.username.length < 3) {
-						conn.disconnect('Invalid nickname!');
-						return;
-					}
-
-					conn.sendServerInfo(this);
-
-					const result = await this.authenticatePlayer({
-						uuid: overrides?.uuid ?? playerInfo.username.toLowerCase(),
-						username: overrides?.username ?? playerInfo.username,
-						authProvider: overrides?.authProvider ?? 'None',
-						service: overrides?.service ?? 'Minecraft',
-						secret: overrides?.secret ?? playerInfo.key,
-						authenticated: overrides?.authenticated ?? false,
-					});
-
-					if (result.allow) {
-						if (this.players.get(result.auth.uuid ?? 'offline-' + result.auth.username.toLowerCase())) {
-							conn.disconnect('Player with this username is already in game!');
-							return;
-						}
-
-						const authProvider = result.auth.authProvider ? `/${result.auth.authProvider}` : '';
-						this.logger.conn(
-							result.auth.service == 'Unknown'
-								? `User ${result.auth.username} (${result.auth.uuid}) doesn't use any auth...`
-								: `User ${result.auth.username} (${result.auth.uuid}) is logged with ${result.auth.service} (${authProvider}) auth!`
-						);
-
-						const player = new Player(
-							result.auth.uuid ?? 'offline-' + result.auth.username.toLowerCase(),
-							result.auth.username,
-							client ?? 'Classic',
-							result.auth.service,
-
-							conn,
-							this
-						);
-						this.players.set(player.uuid, player);
-						this._playerUUIDCache.set(player.username.toLowerCase(), player.uuid);
-
-						{
-							const result = this.event.PlayerConnect._emit({ player });
-
-							if (!result) {
-								return;
-							}
-						}
-
-						await player._connectionHandler.sendWorld(player.world);
-						player.world._addPlayer(player);
-						player.isInWorld = true;
-						this.sendChatMessage(this.getMessage('join', { player: player.getDisplayName() }), player);
-					} else {
-						conn.disconnect('You need to log in!');
-					}
-				} catch (e) {
-					this.logger.conn('Disconnected player - ' + e);
-					conn.disconnect(e);
-				}
-			});
-		} catch (e) {
-			this.logger.conn('Disconnected player - ' + e);
-			conn.disconnect(e);
+	async addPlayer(auth: AuthData, conn: ConnectionHandler) {
+		if (this.players.get(auth.uuid ?? 'offline-' + auth.username.toLowerCase())) {
+			conn.disconnect('Player with this username is already in game!');
+			return;
 		}
+	
+		const authProvider = auth.authProvider ? `/${auth.authProvider}` : '';
+		this.logger.conn(
+			auth.service == 'Unknown'
+				? `User ${auth.username} (${auth.uuid}) doesn't use any auth...`
+				: `User ${auth.username} (${auth.uuid}) is logged with ${auth.service} (${authProvider}) auth!`
+		);
+	
+		const player = new Player(
+			auth.uuid ?? 'offline-' + auth.username.toLowerCase(),
+			auth.username,
+			conn.getClient() ?? 'Classic',
+			auth.service,
+	
+			conn,
+			this
+		);
+		this.players.set(player.uuid, player);
+	
+		this._playerUUIDCache.set(player.username.toLowerCase(), player.uuid);
+	
+		{
+			const result = this.event.PlayerConnect._emit({ player });
+	
+			if (!result) {
+				return;
+			}
+		}
+	
+		await player._connectionHandler.sendWorld(player.world);
+		player.world._addPlayer(player);
+		player.isInWorld = true;
+		this.sendChatMessage(this.getMessage('join', { player: player.getDisplayName() }), player);
 	}
 
 	/**
@@ -409,7 +379,9 @@ export class Server {
 	 * @param player Player that send it, don't need to be set
 	 */
 	sendChatMessage(message: string, player?: Player) {
-		Object.values(this.players).forEach((p) => p.sendMessage(message, player));
+		for (const [, p] of this.players) {
+			p.sendMessage(message, player);
+		}
 
 		this.logger.chat(message);
 	}
@@ -765,15 +737,15 @@ export class Server {
 	 */
 	getFreePlayerId(): number {
 		for (let x = 0; x < 127; x++) {
-			let isUnique = true;
-			for (const uuid in this.players) {
-				if (this.players.get(uuid)?.numId == x) {
-					isUnique = false;
+			let free = true;
+			for (const [, p] of this.players) {
+				if (p.numId == x) {
+					free = false;
 					break;
 				}
 			}
 
-			if (isUnique) {
+			if (free) {
 				return x;
 			}
 		}
@@ -911,48 +883,9 @@ export interface IFileHelper {
 	listPlayers(): string[];
 }
 
-export interface IConfig {
-	address: string;
-	port: number;
-
-	serverName: string;
-	serverMotd: string;
-
-	maxPlayerCount: number;
-	autoSaveInterval: number;
-	backupInterval: number;
-
-	defaultWorldName: string;
-
-	onlineMode: boolean;
-	//useMineOnlineHeartbeat: boolean;
-	//publicOnMineOnline: boolean;
-
-	useBetaCraftHeartbeat: boolean;
-	publicOnBetaCraft: boolean;
-
-	useClassiCubeHeartbeat: boolean;
-	publicOnClassiCube: boolean;
-
-	allowOffline: boolean;
-
-	messages: {
-		join: string;
-		leave: string;
-		chat: string;
-		serverStopped: string;
-		noCommand: string;
-		cheatDistance: string;
-		cheatTile: string;
-		cheatClick: string;
-		cheatSpam: string;
-		[i: string]: string;
-	};
-}
-
-const defaultConfig: IConfig = {
+const defaultConfig = {
 	address: 'localhost',
-	port: 25566,
+	port: 25565,
 
 	serverName: 'Cobblestone',
 	serverMotd: 'Another Minecraft Classic server!',
@@ -965,9 +898,6 @@ const defaultConfig: IConfig = {
 
 	onlineMode: true,
 
-	//useMineOnlineHeartbeat: false,
-	//publicOnMineOnline: false,
-
 	useBetaCraftHeartbeat: false,
 	publicOnBetaCraft: false,
 
@@ -975,6 +905,8 @@ const defaultConfig: IConfig = {
 	publicOnClassiCube: false,
 
 	allowOffline: true,
+
+	enableModernMCProtocol: true,
 
 	messages: {
 		join: '&e$PLAYER joined the game',
@@ -986,5 +918,7 @@ const defaultConfig: IConfig = {
 		cheatTile: 'Cheat detected: Tile type',
 		cheatClick: 'Cheat detected: Too much clicking!',
 		cheatSpam: "You've spammed too much",
-	},
+	} as {[i: string]: string},
 };
+
+export type IConfig = typeof defaultConfig;

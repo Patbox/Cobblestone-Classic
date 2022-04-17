@@ -35,7 +35,7 @@ export class Player {
 	readonly _connectionHandler: ConnectionHandler;
 
 	constructor(uuid: string, username: string, client: string, service: Services, connection: ConnectionHandler, server: Server) {
-		this.ip = connection.ip;
+		this.ip = connection.getIp();
 
 		this.username = username;
 		this.service = service;
@@ -308,7 +308,7 @@ export class Player {
 	 * Do not use unless you know what are you doing
 	 */
 	_action_move(x: number, y: number, z: number, yaw: number, pitch: number) {
-		if (vec.equals([x, y, z], this.position)) {
+		if (vec.equals([x, y, z], this.position) && this.yaw == yaw && this.pitch == pitch) {
 			return;
 		}
 
@@ -379,17 +379,17 @@ export class Player {
 	/**
 	 * Do not use unless you know what are you doing
 	 */
-	_action_block_break(x: number, y: number, z: number, blockId: number) {
-		const block = this._server.getBlock(blockId);
+	_action_block_break(x: number, y: number, z: number): boolean {
+		const block = this.world.getBlock(x, y, z);
 
 		if (!block || !this.world.isInBounds(x, y, z) || block.unbreakable) {
 			this._connectionHandler.setBlock(x, y, z, this.world.getBlockId(x, y, z));
-			return;
+			return false;
 		}
 
 		if (Date.now() - this.checksCache.lastPlacedBlockTime < 1000 && this.checksCache.placedBlockNumber > 9) {
 			this.disconnect(this._server.config.messages.cheatSpam);
-			return;
+			return false;
 		} else if (Date.now() - this.checksCache.lastPlacedBlockTime >= 1000) {
 			this.checksCache.lastPlacedBlockTime = Date.now();
 			this.checksCache.placedBlockNumber = 0;
@@ -401,8 +401,10 @@ export class Player {
 		if (result) {
 			this.world.setBlockId(x, y, z, 0);
 			this.world.lazyTickNeighborBlocksAndSelf(x, y, z);
+			return true;
 		} else {
 			this._connectionHandler.setBlock(x, y, z, this.world.getBlockId(x, y, z));
+			return false
 		}
 	}
 

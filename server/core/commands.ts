@@ -292,7 +292,7 @@ export function setupCommands(server: Server, commands: Map<string, Command>) {
 									server.groups.set(args[2], group);
 								}
 
-								switch (args[2]) {
+								switch (args[3]) {
 									case 'set':
 										tmp = ('' + args[4]).toLowerCase() != 'false';
 										group.setPermission(args[4], tmp);

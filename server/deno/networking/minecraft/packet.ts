@@ -1,21 +1,61 @@
+import { zlib } from '../../deps.ts';
+import * as uuidUtils from '../../../core/uuid.ts';
+import * as nbt from '../../../libs/nbt/index.ts';
+import { XYZ } from '../../../core/types.ts';
+
 const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
 
 export const classicTextRegex = /[^ -~]/gi;
 
+export const writeVarInt = (n: number, byteConsumer: (n: number) => void) => {
+	do {
+		let temp = n & 0b01111111;
+		n >>>= 7;
+		if (n != 0) {
+			temp |= 0b10000000;
+		}
+		byteConsumer(temp);
+	} while (n != 0);
+};
+
+export const getVarIntSize = (n: number) => {
+	let size = 0;
+	do {
+		n >>>= 7;
+		size++;
+	} while (n != 0);
+	return size;
+};
+
+export const readVarInt = (byteProvider: () => number) => {
+	let numRead = 0;
+	let result = 0;
+	let read;
+
+	do {
+		read = byteProvider();
+		const value = read & 0b01111111;
+		result |= value << (7 * numRead);
+
+		numRead++;
+		if (numRead > 5) {
+			throw new Error('VarInt is too big');
+		}
+	} while ((read & 0b10000000) != 0);
+
+	return result;
+};
+
 export class PacketReader {
 	buffer: Uint8Array;
 	view: DataView;
 	pos: number;
-	compressed: boolean;
-	readonly lenght: number;
 
-	constructor(buffer: Uint8Array, compressed = false) {
+	constructor(buffer: Uint8Array) {
 		this.buffer = buffer;
 		this.view = new DataView(buffer.buffer);
 		this.pos = 0;
-		this.compressed = compressed;
-		this.lenght = this.readVarInt();
 	}
 
 	readBool(): boolean {
@@ -78,6 +118,15 @@ export class PacketReader {
 		return textDecoder.decode(a);
 	}
 
+	readUUID(): string {
+		return uuidUtils.bytesToString(this.readByteArray(uuidUtils.byteSize));
+	}
+
+	readPosition(): XYZ {
+		const val = this.readLong();
+		return [Number(val >> 38n), Number(val & 0xffn), Number((val >> 12n) & 0x3ffffffn)];
+	}
+
 	readVarInt(): number {
 		let numRead = 0;
 		let result = 0;
@@ -120,20 +169,41 @@ export class PacketReader {
 		this.pos += n;
 		return x;
 	}
+
+	readLongArray(): bigint[] {
+		const array = [];
+		let length = this.readVarInt();
+		while (length-- > 0) {
+			array.push(this.readLong());
+		}
+
+		return array;
+	}
+
+	readIntArray(): number[] {
+		const array = [];
+		let length = this.readVarInt();
+		while (length-- > 0) {
+			array.push(this.readInt());
+		}
+
+		return array;
+	}
+
+	atEnd() {
+		return this.pos >= this.buffer.length;
+	}
 }
 
 export class PacketWriter {
 	buffer: Uint8Array;
 	view: DataView;
 	pos: number;
-	readonly id: number;
 
-	constructor(id: number, lenght: number = 4096) {
+	constructor(lenght: number = 4096) {
 		this.buffer = new Uint8Array(lenght);
 		this.view = new DataView(this.buffer.buffer);
 		this.pos = 0;
-		this.id = id;
-		this.writeVarInt(id);
 	}
 
 	protected doubleSizeIfNeeded(n: number) {
@@ -192,6 +262,14 @@ export class PacketWriter {
 		return this;
 	}
 
+	writeUInt(n: number) {
+		this.doubleSizeIfNeeded(4);
+
+		this.view.setUint32(this.pos, n);
+		this.pos += 4;
+		return this;
+	}
+
 	writeLong(n: bigint) {
 		this.doubleSizeIfNeeded(8);
 
@@ -222,6 +300,31 @@ export class PacketWriter {
 
 		this.writeVarInt(a.length);
 		this.writeByteArray(a);
+		return this;
+	}
+
+	writeIdentifier(channel: string) {
+		// Todo: add validation
+		this.writeString(channel);
+		return this;
+	}
+
+	writeNbt(nbtData: nbt.TagObject) {
+		this.writeByteArray(nbt.encode('', nbtData));
+		return this;
+	}
+
+	writeUUID(uuid: string) {
+		this.writeByteArray(uuidUtils.stringToBytes(uuid));
+		return this;
+	}
+
+	writePosition(pos: XYZ) {
+		const x = BigInt(pos[0]);
+		const y = BigInt(pos[1]);
+		const z = BigInt(pos[2]);
+
+		this.writeLong(((x & 0x3ffffffn) << 38n) | ((z & 0x3ffffffn) << 12n) | (y & 0xfffn));
 		return this;
 	}
 
@@ -265,33 +368,98 @@ export class PacketWriter {
 		return this;
 	}
 
+	writeLongArray(n: bigint[] | BigInt64Array) {
+		const lenght = n.length;
+		this.writeVarInt(lenght);
+		for (let i = 0; i < lenght; i++) {
+			this.writeLong(n[i]);
+		}
+	}
+
+	writeIntArray(n: number[] | Uint32Array | Int32Array) {
+		const lenght = n.length;
+		this.writeVarInt(lenght);
+		for (let i = 0; i < lenght; i++) {
+			this.writeInt(n[i]);
+		}
+	}
+
 	toPacket(compressed = false): Uint8Array {
 		const tempArray = this.buffer.slice(0, this.pos);
 
 		if (compressed) {
-			// Todo
-			return tempArray;
-		} else {
-			const out = new Uint8Array(tempArray.length + 5);
+			const compressed = zlib.deflate(tempArray);
 
-			let n = tempArray.length;
+			const out = new Uint8Array(compressed.length + getVarIntSize(tempArray.length));
+
 			let pos = 0;
 
-			do {
-				let temp = n & 0b01111111;
-				n >>>= 7;
-				if (n != 0) {
-					temp |= 0b10000000;
-				}
+			writeVarInt(compressed.length + getVarIntSize(tempArray.length), (b) => (out[pos++] = b));
+			writeVarInt(tempArray.length, (b) => (out[pos++] = b));
 
-				out[pos] = temp;
-				pos += 1;
-			} while (n != 0);
+			out.set(compressed, pos);
 
+			return out;
+		} else {
+			const out = new Uint8Array(this.pos + getVarIntSize(this.pos));
+
+			let pos = 0;
+
+			writeVarInt(this.pos, (b) => (out[pos++] = b));
 			out.set(tempArray, pos);
-			this.pos += tempArray.length;
-
-			return out.slice(0, this.pos);
+			return out;
 		}
+	}
+}
+
+export class BitSet {
+	words: bigint[];
+
+	constructor(nbits: number) {
+		this.words = [];
+
+		let longs = Math.ceil(nbits / 64) 
+
+		while (longs-- > 0) {
+			this.words.push(0n);
+		}
+	}
+
+	public set(index: number, val: boolean) {
+		const w = this.wordIndex(index);
+		const b = this.bitIndex(index);
+
+		if (w >= this.words.length) {
+			let x = w - this.words.length;
+
+			while (x-- >= 0) {
+				this.words.push(0n);
+			}
+		}
+
+		if (val) {
+			this.words[w] |= BigInt(0x1 << b);
+		} else {
+			this.words[w] ^= BigInt(0x1 << b);
+		}
+	}
+
+	public get(index: number) {
+		const w = this.wordIndex(index);
+		const b = this.bitIndex(index);
+
+		if (w >= this.words.length) {
+			return false;
+		}
+
+		return ((this.words[w] >> BigInt(b)) & 0x1n) == 1n;
+	}
+
+	private wordIndex(index: number) {
+		return Math.floor(index / 64);
+	}
+
+	private bitIndex(index: number) {
+		return Math.floor(index % 64);
 	}
 }

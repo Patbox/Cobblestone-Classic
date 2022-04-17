@@ -93,10 +93,10 @@ export const blocks = {
 	yellow: new Block(23),
 	lime: new Block(24),
 	green: new Block(25),
-	aqua: new Block(26),
-	cyan: new Block(27),
-	blue: new Block(28),
-	purple: new Block(29),
+	teal: new Block(26),
+	aqua: new Block(27),
+	cyan: new Block(28),
+	blue: new Block(29),
 	indigo: new Block(30),
 	violet: new Block(31),
 	magenta: new Block(32),
@@ -104,7 +104,7 @@ export const blocks = {
 	black: new Block(34),
 	gray: new Block(35),
 	white: new Block(36),
-	dantelion: new Block(37, true, 'plant', false, true),
+	dandelion: new Block(37, true, 'plant', false, true),
 	rose: new Block(38, true, 'plant', false, true),
 	brownMushroom: new Block(39, true, 'plant', false, true),
 	redMushroom: new Block(40, true, 'plant', false, true),
@@ -119,60 +119,18 @@ export const blocks = {
 	obsidian: new Block(49),
 };
 
-export const blockIds = {
-	air: 0,
-	stone: 1,
-	grass: 2,
-	dirt: 3,
-	cobblestone: 4,
-	planks: 5,
-	sapling: 6,
-	bedrock: 7,
-	flowingWater: 8,
-	water: 9,
-	flowingLava: 10,
-	lava: 11,
-	sand: 12,
-	gravel: 13,
-	goldOre: 14,
-	ironOre: 15,
-	coalOre: 16,
-	wood: 17,
-	leaves: 18,
-	sponge: 19,
-	glass: 20,
-	red: 21,
-	orange: 22,
-	yellow: 23,
-	lime: 24,
-	green: 25,
-	aqua: 26,
-	cyan: 27,
-	blue: 28,
-	purple: 29,
-	indigo: 30,
-	violet: 31,
-	magenta: 32,
-	pink: 33,
-	black: 34,
-	gray: 35,
-	white: 36,
-	dantelion: 37,
-	rose: 38,
-	brownMushroom: 39,
-	redMushroom: 40,
-	gold: 41,
-	iron: 42,
-	doubleSlab: 43,
-	slab: 44,
-	bricks: 45,
-	tnt: 46,
-	bookshelf: 47,
-	moss: 48,
-	obsidian: 49,
-};
 
-export const lastBlockId = 49;
+export const blockIds = <{[Property in keyof typeof blocks]: number}>(() => {
+	const obj: Holder<number> = {};
+
+	for (const [a, b] of Object.entries(blocks)) {
+		obj[a] = b.numId;
+	}
+
+	return obj;
+})();
+
+export const lastBlockId = blockIds.obsidian;
 
 export const blocksIdsToName: Record<number, string> = {};
 
