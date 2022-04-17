@@ -77,7 +77,7 @@ if ('onmessage' in self) {
 
 					if (bm1 == blockIds.grass && b0 == blockIds.air) {
 						if (hash(seed, x, y, z, 346346) < 0.1) {
-							world.setBlockId(x, y, z, hash(seed, x, y, z, 463) >= 0.5 ? blockIds.rose : blockIds.dantelion);
+							world.setBlockId(x, y, z, hash(seed, x, y, z, 463) >= 0.5 ? blockIds.rose : blockIds.dandelion);
 						} else if (hash(seed, x, y, z, 34656, x / z) < 0.001) {
 							createTree(world, hash, x, y, z, seed);
 						} else if (hash(seed, y, x, z, 4774, x / z) < 0.004) {
