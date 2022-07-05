@@ -28,7 +28,7 @@ export class MCProtocolHandler {
 	private compression = Number.MAX_SAFE_INTEGER;
 	readonly protocol: number;
 	readonly _server: Server;
-	close: () => void;
+	close: (reason?: string|Error) => void;
 	authData: Nullable<AuthData> = null;
 	connect: (handler: ConnectionHandler, auth: AuthData) => void;
 	player: Nullable<Player> = null;
@@ -36,8 +36,10 @@ export class MCProtocolHandler {
 		minePos: null as Nullable<XYZ>,
 		mineTime: null as Nullable<number>
 	}
+	inventory: number[] = Array(50);
+	inventorySlot: number = 0;
 
-	constructor(server: Server, protocol: number, _serverHostname: string, _serverPort: number, nextStatus: number, send: (d: Uint8Array) => void, connect: (handler: ConnectionHandler, auth: AuthData) => void, close: () => void) {
+	constructor(server: Server, protocol: number, _serverHostname: string, _serverPort: number, nextStatus: number, send: (d: Uint8Array) => void, connect: (handler: ConnectionHandler, auth: AuthData) => void, close: (reason?: string|Error) => void) {
 		this._send = send;
 		this.stage = nextStatus == 1 ? NetworkingStage.STATUS : NetworkingStage.LOGIN;
 		this.packets = this.stage == NetworkingStage.STATUS ? statusPackets : loginPackets;
@@ -70,7 +72,7 @@ export class MCProtocolHandler {
 				}
 			}	
 		} catch (_e) {
-			this.close();
+			this.close(_e);
 		}	
 	}
 
@@ -101,7 +103,7 @@ statusPackets[0x00] = (handler, _data) => {
 			JSON.stringify({
 				version: {
 					name: '0.30',
-					protocol: 7,
+					protocol: 0,
 				},
 				description: {
 					text: `${handler._server.config.serverName.replaceAll('&', '§')}\n${handler._server.config.serverMotd.replaceAll('&', '§')}`,

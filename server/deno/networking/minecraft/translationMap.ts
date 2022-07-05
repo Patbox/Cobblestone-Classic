@@ -11,6 +11,7 @@ class Builder {
 	blockToCBlock: Block[] = []
 	blockToItem: ItemType[] = []
 	itemToBlock: BlockType[] = []
+	itemToCBlock: Block[] = []
 
 	
 	constructor() {}
@@ -19,8 +20,8 @@ class Builder {
 		this.cBlockToBlock[classicBlock.numId] = block;
 		this.blockToCBlock[block.id] = classicBlock;
 		this.itemToBlock[item.id] = block;
+		this.itemToCBlock[item.id] = classicBlock;
 		this.blockToItem[block.id] = item;
-
 		this.cBlockToBlockState[classicBlock.numId] = block.minStateId + state;
 
 		return this;
@@ -47,7 +48,7 @@ const data = new Builder()
 	.set(cBlocks.ironOre, blocks.iron_ore, 0, items.iron_ore)
 	.set(cBlocks.coalOre, blocks.coal_ore, 0, items.coal_ore)
 	.set(cBlocks.wood, blocks.oak_log, 1, items.oak_log)
-	.set(cBlocks.leaves, blocks.oak_leaves, 0, items.oak_leaves)
+	.set(cBlocks.leaves, blocks.oak_leaves, 25, items.oak_leaves)
 	.set(cBlocks.sponge, blocks.sponge, 0, items.sponge)
 	.set(cBlocks.glass, blocks.glass, 0, items.glass)
 	.set(cBlocks.red, blocks.red_wool, 0, items.red_wool)
@@ -80,9 +81,12 @@ const data = new Builder()
 	.set(cBlocks.moss, blocks.mossy_cobblestone, 0, items.mossy_cobblestone)
 	.set(cBlocks.obsidian, blocks.obsidian, 0, items.obsidian);
 
+export const barrierId = blocks.barrier.minStateId;
+
 
 export const cBlockToBlock = data.cBlockToBlock
 export const cBlockToBlockState = data.cBlockToBlockState
 export const blockToCBlock = data.blockToCBlock
 export const blockToItem = data.blockToItem
 export const itemToBlock = data.itemToBlock
+export const itemToCBlock = data.itemToCBlock

@@ -42,7 +42,8 @@
           "plains",
           "sunflower_plains",
           "beach",
-          "dripstone_caves"
+          "dripstone_caves",
+          "deep_dark"
         ],
         "color": -7226023
       },
@@ -93,7 +94,8 @@
       },
       {
         "keys": [
-          "swamp"
+          "swamp",
+          "mangrove_swamp"
         ],
         "color": 6975545
       },
@@ -195,6 +197,12 @@
       },
       {
         "keys": [
+          "mangrove_swamp"
+        ],
+        "color": 9285927
+      },
+      {
+        "keys": [
           "meadow"
         ],
         "color": -10245816
@@ -244,7 +252,8 @@
           "plains",
           "sunflower_plains",
           "beach",
-          "dripstone_caves"
+          "dripstone_caves",
+          "deep_dark"
         ],
         "color": -8934609
       },
@@ -316,6 +325,12 @@
       },
       {
         "keys": [
+          "mangrove_swamp"
+        ],
+        "color": 3832426
+      },
+      {
+        "keys": [
           "meadow"
         ],
         "color": 937679
@@ -383,6 +398,7 @@
           "mushroom_fields",
           "dripstone_caves",
           "lush_caves",
+          "deep_dark",
           "nether_wastes",
           "warped_forest",
           "crimson_forest",
@@ -508,12 +524,6 @@
     "data": [
       {
         "keys": [
-          "attached_pumpkin_stem"
-        ],
-        "color": 14731036
-      },
-      {
-        "keys": [
           "spruce_leaves"
         ],
         "color": 6396257
@@ -526,7 +536,13 @@
       },
       {
         "keys": [
-          "attached_melon_stem"
+          "lily_pad"
+        ],
+        "color": 2129968
+      },
+      {
+        "keys": [
+          "attached_pumpkin_stem"
         ],
         "color": 14731036
       },
@@ -538,15 +554,15 @@
       },
       {
         "keys": [
-          "lily_pad"
-        ],
-        "color": 2129968
-      },
-      {
-        "keys": [
           "melon_stem"
         ],
         "color": 65280
+      },
+      {
+        "keys": [
+          "attached_melon_stem"
+        ],
+        "color": 14731036
       }
     ]
   }

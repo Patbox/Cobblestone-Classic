@@ -81,14 +81,20 @@ export class TpcConnectionHandler extends WrappedConnectionHandler {
 						this._handler = h;
 						this._server.addPlayer(a, this);
 					},
-					() => this.close());
+					(e) => {
+						if (e) {
+							this.handleError(e)
+						}
+
+						this.close()
+					});
 
 					if (data.buffer.length > data.pos) {
 						this._modernHandler._decode(c.slice(data.pos, data.buffer.length));
 					}
 				}
-			} catch (_e) {
-				// noop
+			} catch (e) {
+				this.handleError(e);
 			}
 		}
 	}
@@ -142,7 +148,16 @@ export class TpcConnectionHandler extends WrappedConnectionHandler {
 	}
 
 	protected handleError(e: unknown, triggerDisconnect = true) {
-		this._server.logger.conn(`Error occured with connection ${this.getIp()}:${this.getPort()} (${this._handler?.getPlayer()?.uuid ?? 'unknown'})! ${e}`);
+		this._server.logger.conn(`Error occured with connection ${this.getIp()}:${this.getPort()} (${this._handler?.getPlayer()?.uuid ?? 'unknown'})!`);
+		if (e instanceof Error) {
+			this._server.logger.conn(e.name + ' - ' + e.message);
+
+			if (e.stack) {
+				this._server.logger.conn(e.stack);
+			}
+
+		}
+
 		if (triggerDisconnect) {
 			this.disconnect(`${e}`);
 		}

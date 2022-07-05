@@ -7,6 +7,14 @@ export const loginPackets: PacketHandler[] = []
 loginPackets[0x00] = async (handler, data) => {
 	const username = data.readString();
 
+	/*const hasSigning = data.readBool();
+
+	if (hasSigning) {
+		const _timestamp = data.readLong();
+		const _publicKey = data.readByteArray(data.readVarInt());
+		const _signature = data.readByteArray(data.readVarInt());
+	}*/
+
 	const result = await handler._server.authenticatePlayer({
 		uuid: username.toLowerCase(),
 		username: username,
@@ -33,7 +41,7 @@ export const packet = {
 	},
 
 	loginSuccess: (name: string, uuid: string) => {
-		return new PacketWriter().writeVarInt(0x02).writeUUID(uuid).writeString(name);
+		return new PacketWriter().writeVarInt(0x02).writeUUID(uuid).writeString(name).writeVarInt(0);
 	},
 
 	setCompression: (value: number) => {

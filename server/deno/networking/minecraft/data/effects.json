@@ -190,5 +190,11 @@
     "name": "hero_of_the_village",
     "displayName": "Hero of the Village",
     "type": "good"
+  },
+  {
+    "id": 33,
+    "name": "darkness",
+    "displayName": "Darkness",
+    "type": "bad"
   }
 ]

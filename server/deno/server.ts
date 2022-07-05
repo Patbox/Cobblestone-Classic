@@ -15,9 +15,9 @@ export class DenoServer extends Server {
 	_serverIcon: string | undefined;
 	protected _shouldLoadPlugins: boolean;
 
-	static readonly denoVersion = '1.20.x';
-	static readonly denoVersionMin = '1.20.0';
-	static readonly denoVersionMax = '1.21.0';
+	static readonly denoVersion = '1.23.x';
+	static readonly denoVersionMin = '1.23.0';
+	static readonly denoVersionMax = '1.24.0';
 
 	constructor(loadPlugins = true, devMode = false) {
 		super(fileHelper, logger, devMode);
@@ -29,7 +29,7 @@ export class DenoServer extends Server {
 	async _startServer() {
 		if (!semver.satisfies(Deno.version.deno, '>=' + DenoServer.denoVersionMin + ' <' + DenoServer.denoVersionMax)) {
 			this.logger.warn(
-				`Your Deno version is unsupported! This software recomends ${DenoServer.denoVersion}, while you are using ${Deno.version.deno}!`
+				`Your Deno version is unsupported! This software was developed agains ${DenoServer.denoVersion}, while you are using ${Deno.version.deno}!`
 			);
 		}
 

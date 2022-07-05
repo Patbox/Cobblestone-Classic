@@ -380,7 +380,7 @@ export class PacketWriter {
 		const lenght = n.length;
 		this.writeVarInt(lenght);
 		for (let i = 0; i < lenght; i++) {
-			this.writeInt(n[i]);
+			this.writeVarInt(n[i]);
 		}
 	}
 
