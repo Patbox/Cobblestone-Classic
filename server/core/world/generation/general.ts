@@ -1,5 +1,5 @@
-import { Position } from '../../../types.ts';
-import { WorldView } from '../../world.ts';
+import { Position } from '../../types.ts';
+import { WorldView } from '../world.ts';
 
 export function createWorkerGenerator(pos: URL): (sizeX: number, sizeY: number, sizeZ: number, seed?: number) => Promise<WorldView> {
 	return (sizeX: number, sizeY: number, sizeZ: number, seed?: number) => {

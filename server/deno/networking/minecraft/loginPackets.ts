@@ -26,6 +26,10 @@ loginPackets[0x00] = async (handler, data) => {
 
 	if (result.allow) {
 		handler.authData = result.auth;
+
+		//handler.send(packet.setCompression(512))
+		//handler.compression = 512;
+
 		handler.send(packet.loginSuccess(username, handler.selfUuid))
 
 		handler.switchToPlay();

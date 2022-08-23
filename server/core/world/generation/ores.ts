@@ -1,5 +1,5 @@
-import { blockIds } from '../../blocks.ts';
-import { WorldView } from '../../world.ts';
+import { blockIds } from '../blocks.ts';
+import { WorldView } from '../world.ts';
 
 const { floor } = Math;
 

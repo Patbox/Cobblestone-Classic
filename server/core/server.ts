@@ -1,20 +1,22 @@
 import { Emitter, EventCallback, EventErrorHandler } from '../libs/emitter.ts';
-import { Player, PlayerData } from './player.ts';
+import { Player, PlayerData, VirtualPlayerHolder } from './player.ts';
 import { PhysicsLevel, World, WorldData, WorldGenerator } from './world/world.ts';
 
 import * as event from './events.ts';
-import { AuthData, Holder, Command, GroupInterface, Plugin, Nullable, XYZ } from './types.ts';
+import { AuthData, Holder, GroupInterface, Plugin, Nullable, XYZ, HelpPage, TriState } from './types.ts';
 import { ConnectionHandler } from './networking/connection.ts';
-import { setupGenerators, emptyGenerator } from './world/generators.ts';
-import { semver } from './deps.ts';
+import { setupGenerators, emptyGenerator } from './builtin/generators.ts';
+import { Semver } from './deps.ts';
 import { blocks, blockIds, blocksIdsToName, Block } from './world/blocks.ts';
-import { setupCommands } from './commands.ts';
+import { setupCommands } from './builtin/commands.ts';
+import { CommandDispatcher, CommandSyntaxError, LiteralArgumentBuilder } from "../libs/brigadier/index.ts";
+import { CommandInfo, CommandSource, ErrorTypes } from "./commands.ts";
 
 export class Server {
 	// Main informations about server
 	static readonly softwareName = 'Cobblestone';
 	static readonly softwareId = 'cobblestone';
-	static readonly softwareVersion = '0.0.19';
+	static readonly softwareVersion = '0.0.20';
 
 	static readonly targetGame = 'Minecraft Classic';
 	static readonly targetVersion = '0.30c';
@@ -29,7 +31,7 @@ export class Server {
 	readonly targetProtocol = Server.targetProtocol;
 
 	// Version of API, goes up when new methods are added
-	readonly _apiVersion = '0.0.18';
+	readonly _apiVersion = '0.0.20';
 
 	// Minimal compatible API
 	readonly _minimalApiVersion = '0.0.16';
@@ -80,7 +82,7 @@ export class Server {
 
 	readonly worlds: Map<string, World> = new Map();
 	protected readonly generators: Map<string, WorldGenerator> = new Map();
-	protected readonly _commands: Map<string, Command> = new Map();
+	protected readonly _commandsInfo: Map<string, CommandInfo> = new Map();
 	protected readonly _plugins: Map<string, Plugin> = new Map();
 	protected _playerUUIDCache: Map<string, string> = new Map();
 
@@ -101,6 +103,9 @@ export class Server {
 	protected _autoSaveInterval = -1;
 	protected _autoBackupInterval = -1;
 	protected _worldTickInterval = -1;
+
+	protected readonly _commandDispatcher = new CommandDispatcher<CommandSource>();
+
 
 	_loaded = false;
 
@@ -200,7 +205,7 @@ export class Server {
 				}, 1000 * 60 * this.config.backupInterval);
 			}
 
-			setupCommands(this, this._commands);
+			setupCommands(this, this._commandsInfo);
 			this.logger.debug(`Added default commands`);
 
 			try {
@@ -336,7 +341,7 @@ export class Server {
 		{
 			const result = this.event.PlayerConnect._emit({ player });
 	
-			if (!result) {
+			if (!result.continue) {
 				return;
 			}
 		}
@@ -363,13 +368,45 @@ export class Server {
 	 * @param command Used command, without / symbol
 	 * @returns If command was executed
 	 */
-	executeCommand(command: string): boolean {
-		const cmd = this.getCommand(command);
-		if (cmd != undefined) {
-			cmd.execute({ server: this, player: null, command, send: this.logger.log, checkPermission: (_x) => true });
-			return true;
+	executeConsoleCommand(command: string): number {
+		return this.executeCommand(command, { 
+			server: this, 
+			player: () => { throw ErrorTypes.playerRequired.create() },
+			playerOrNull: () => null,
+			send: this.logger.log, 
+			checkPermission: (_x: string) => TriState.TRUE,
+			sendError: this.logger.error
+		 });
+	}
+
+	/**
+	 * Executes command
+	 *
+	 * @param command Used command, without / symbol
+	 * @returns If command was executed
+	 */
+	executeCommand(command: string, source: CommandSource): number {
+		try {
+			return this._commandDispatcher.execute(command, source);
+		} catch (e: unknown) {
+			if (e instanceof CommandSyntaxError) {
+				source.sendError(e.message)
+			} else {
+				source.sendError("Internal error occured while executing this command! See logs for details");
+				if (e instanceof Error) {
+					this.logger.error("=============")
+					this.logger.error(e.name)
+					this.logger.error("=============")
+					this.logger.error(e.message)
+					if (e.stack) {
+						this.logger.error("")
+						this.logger.error("Stack:")
+						this.logger.error(e.stack)
+					}
+				}
+			}
+			return -1;
 		}
-		return false;
 	}
 
 	/**
@@ -569,10 +606,10 @@ export class Server {
 		}
 
 		try {
-			const api = semver.valid(plugin.cobblestoneApi);
+			const api = Semver.valid(plugin.cobblestoneApi);
 			if (api != null) {
-				if (semver.gte(api, this._minimalApiVersion)) {
-					if (semver.lte(api, this.softwareVersion)) {
+				if (Semver.gte(api, this._minimalApiVersion)) {
+					if (Semver.lte(api, this.softwareVersion)) {
 						this.logger.log(`Initializing plugin ${plugin.name} ${plugin.version}`);
 
 						await plugin.init(this);
@@ -621,13 +658,17 @@ export class Server {
 	 * @param command Command instance
 	 * @returns Boolean indicating, if it was successful
 	 */
-	addCommand(command: Command): boolean {
-		if (command.name.includes(' ')) {
-			return false;
-		}
+	addCommand(literal: LiteralArgumentBuilder<CommandSource>, description?: string, helpPages?: HelpPage[]): boolean {
+		const node = this._commandDispatcher.register(literal);
 
-		this._commands.set(command.name, command);
-		this.logger.debug(`Command ${command.name} added`);
+		this._commandsInfo.set(node.getName(), {
+			name: node.getName(),
+			node: node,
+			description: description ?? "Command",
+			help: helpPages,
+		});
+
+		this.logger.debug(`Command ${node.getName()} added`);
 
 		return true;
 	}
@@ -637,38 +678,19 @@ export class Server {
 	 *
 	 * @param command Command name
 	 * @returns Boolean indicating, if it was successful
-	 */
+	 * /
 	removeCommand(command: string): boolean {
-		if (command.includes(' ')) {
-			return false;
-		}
-
-		if (this._commands.has(command)) {
-			this._commands.delete(command);
-			this.logger.debug(`Command ${command} removed`);
-			return true;
-		}
-
+		
+		this._commandDispatcher.getRoot().getChildren()
+		this._commandsInfo.delete(command);
 		return false;
-	}
+	}*/
 
 	/**
-	 * Allows to get command from string
-	 *
-	 * @param command
-	 * @returns Command or null
+	 * Returns command dispatcher
 	 */
-	getCommand(command: string): Nullable<Command> {
-		const x = command.split(' ');
-
-		return this._commands.get(x[0]) ?? null;
-	}
-
-	/**
-	 * Returns all commands (readonly)
-	 */
-	getAllCommands(): Map<string, Command> {
-		return this._commands;
+	getCommandDispatcher(): CommandDispatcher<CommandSource> {
+		return this._commandDispatcher;
 	}
 
 	/**
@@ -732,6 +754,17 @@ export class Server {
 		return this._playerUUIDCache.get(username.toLowerCase()) ?? null;
 	}
 
+	getPlayerByName(username: string): Nullable<Player> {
+		return this.players.get(this._playerUUIDCache.get(username.toLowerCase()) ?? "") ?? null;
+	}
+
+
+	getPlayerHolderByName(username: string): Nullable<VirtualPlayerHolder> {
+		const uuid = this.getPlayerIdFromName(username);
+		if (!uuid) return null;
+		return new VirtualPlayerHolder(uuid, this);
+	}
+
 	/**
 	 * Gets free numeric id, that can be used for player.
 	 */
@@ -784,21 +817,21 @@ export class Server {
 
 export class Group implements GroupInterface {
 	name: string;
-	visibleName?: string;
+	displayName?: string;
 	prefix?: string;
-	sufix?: string;
+	suffix?: string;
 	permissions: { [i: string]: Nullable<boolean> };
 
 	constructor(data: GroupInterface) {
 		this.name = data.name;
-		this.visibleName = data.visibleName;
+		this.displayName = data.displayName;
 		this.prefix = data.prefix;
-		this.sufix = data.sufix;
+		this.suffix = data.suffix;
 		this.permissions = data.permissions;
 	}
 
 	getName() {
-		return this.visibleName ?? this.name;
+		return this.displayName ?? this.name;
 	}
 
 	setPermission(permission: string, value: Nullable<boolean>) {

@@ -390,7 +390,7 @@ export class PacketWriter {
 		if (compressed) {
 			const compressed = zlib.deflate(tempArray);
 
-			const out = new Uint8Array(compressed.length + getVarIntSize(tempArray.length));
+			const out = new Uint8Array(compressed.length + getVarIntSize(compressed.length + getVarIntSize(tempArray.length)) + getVarIntSize(tempArray.length));
 
 			let pos = 0;
 

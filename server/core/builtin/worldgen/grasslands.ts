@@ -1,10 +1,10 @@
-import { blockIds } from '../blocks.ts';
-import { opensimplex } from '../../deps.ts';
+import { blockIds } from '../../world/blocks.ts';
+import { OpenSimplex } from '../../deps.ts';
 import { makeMurmur } from '../../../libs/murmur.ts';
-import { WorldView } from '../world.ts';
-import { createClassicTree, createTree } from './helpers/tree.ts';
-import { createOres } from './helpers/ores.ts';
-import { sendDataToMain } from './helpers/general.ts';
+import { WorldView } from '../../world/world.ts';
+import { createClassicTree, createTree } from '../../world/generation/tree.ts';
+import { createOres } from '../../world/generation/ores.ts';
+import { sendDataToMain } from "../../world/generation/general.ts";
 
 if ('onmessage' in self) {
 	const worker = self as Worker & typeof self;
@@ -22,10 +22,10 @@ if ('onmessage' in self) {
 
 		const hash = makeMurmur(seed);
 
-		const heightNoise = opensimplex.makeNoise2D(Math.round(seed * 60 * Math.sin(seed ^ 3) * 10000));
-		const heightNoise2 = opensimplex.makeNoise2D(Math.round(seed * 60 * 10000));
-		const caveNoise = opensimplex.makeNoise3D(Math.round(seed * Math.sin(seed ^ 2) * 10000));
-		const caveNoise2 = opensimplex.makeNoise3D(Math.round(seed * 10000));
+		const heightNoise = OpenSimplex.makeNoise2D(Math.round(seed * 60 * Math.sin(seed ^ 3) * 10000));
+		const heightNoise2 = OpenSimplex.makeNoise2D(Math.round(seed * 60 * 10000));
+		const caveNoise = OpenSimplex.makeNoise3D(Math.round(seed * Math.sin(seed ^ 2) * 10000));
+		const caveNoise2 = OpenSimplex.makeNoise3D(Math.round(seed * 10000));
 
 		const tempWorld = new WorldView(null, xSize, ySize, zSize);
 

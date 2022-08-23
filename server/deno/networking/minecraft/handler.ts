@@ -25,7 +25,7 @@ export class MCProtocolHandler {
 	stage: NetworkingStage = NetworkingStage.STATUS;
 	packets: PacketHandler[];
 
-	private compression = Number.MAX_SAFE_INTEGER;
+	compression = Number.MAX_SAFE_INTEGER;
 	readonly protocol: number;
 	readonly _server: Server;
 	close: (reason?: string|Error) => void;
@@ -37,7 +37,7 @@ export class MCProtocolHandler {
 		mineTime: null as Nullable<number>
 	}
 	inventory: number[] = Array(50);
-	inventorySlot: number = 0;
+	inventorySlot = 0;
 
 	constructor(server: Server, protocol: number, _serverHostname: string, _serverPort: number, nextStatus: number, send: (d: Uint8Array) => void, connect: (handler: ConnectionHandler, auth: AuthData) => void, close: (reason?: string|Error) => void) {
 		this._send = send;

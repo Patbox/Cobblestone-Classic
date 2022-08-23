@@ -1,7 +1,7 @@
 import type { Server } from '../server.ts';
-import { WorldGenerator, WorldView } from './world.ts';
-import { blockIds } from './blocks.ts';
-import { createWorkerGenerator } from './generators/helpers/general.ts';
+import { WorldGenerator, WorldView } from '../world/world.ts';
+import { blockIds } from '../world/blocks.ts';
+import { createWorkerGenerator } from '../world/generation/general.ts';
 
 export const emptyGenerator: WorldGenerator = {
 	name: 'empty',

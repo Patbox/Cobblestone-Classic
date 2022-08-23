@@ -3,7 +3,7 @@ import { Player, PlayerData } from '../core/player.ts';
 import { IFileHelper, ILogger, Server } from '../core/server.ts';
 import { World } from '../core/world/world.ts';
 import { fs, crypto2 } from './deps.ts';
-import { gzip, ungzip, msgpack, semver } from '../core/deps.ts';
+import { gzip, ungzip, Msgpack, Semver } from '../core/deps.ts';
 import { AuthData, AuthProvider, Nullable, Services } from '../core/types.ts';
 
 const textEncoder = new TextEncoder();
@@ -15,9 +15,9 @@ export class DenoServer extends Server {
 	_serverIcon: string | undefined;
 	protected _shouldLoadPlugins: boolean;
 
-	static readonly denoVersion = '1.23.x';
-	static readonly denoVersionMin = '1.23.0';
-	static readonly denoVersionMax = '1.24.0';
+	static readonly denoVersion = '1.24.x';
+	static readonly denoVersionMin = '1.24.0';
+	static readonly denoVersionMax = '1.25.0';
 
 	constructor(loadPlugins = true, devMode = false) {
 		super(fileHelper, logger, devMode);
@@ -27,7 +27,7 @@ export class DenoServer extends Server {
 	}
 
 	async _startServer() {
-		if (!semver.satisfies(Deno.version.deno, '>=' + DenoServer.denoVersionMin + ' <' + DenoServer.denoVersionMax)) {
+		if (!Semver.satisfies(Deno.version.deno, '>=' + DenoServer.denoVersionMin + ' <' + DenoServer.denoVersionMax)) {
 			this.logger.warn(
 				`Your Deno version is unsupported! This software was developed agains ${DenoServer.denoVersion}, while you are using ${Deno.version.deno}!`
 			);
@@ -89,9 +89,7 @@ export class DenoServer extends Server {
 				const command = String.fromCharCode(...buf.slice(0, n)).replace('\n', '');
 				buf.fill(0);
 				logger.writeToLog('> ' + command);
-				if (!this.executeCommand(command)) {
-					this.logger.log("&cThis command doesn't exist");
-				}
+				this.executeConsoleCommand(command)
 			}
 		})();
 
@@ -102,7 +100,7 @@ export class DenoServer extends Server {
 			try {
 				if (this.config.useBetaCraftHeartbeat) {
 					fetch(
-						`https://betacraft.pl/heartbeat.jsp?port=${this.config.port}&max=${this.config.maxPlayerCount}&name=${escape(
+						`https://betacraft.uk/heartbeat.jsp?port=${this.config.port}&max=${this.config.maxPlayerCount}&name=${escape(
 							this.config.serverName
 						)}&public=${this.config.publicOnBetaCraft ? 'True' : 'False'}&version=7&salt=${this._salt["Betacraft"]}&users=${players.length}`
 					);
@@ -475,7 +473,7 @@ const fileHelper: IFileHelper = {
 		try {
 			const file = Deno.createSync(`./player/${uuid}.cpd`);
 
-			file.writeSync(msgpack.encode(player));
+			file.writeSync(Msgpack.encode(player));
 
 			file.close();
 			return true;
@@ -504,7 +502,7 @@ const fileHelper: IFileHelper = {
 			}
 
 			const file = Deno.readFileSync(`./player/${uuid}.cpd`);
-			return <PlayerData>msgpack.decode(file);
+			return <PlayerData>Msgpack.decode(file);
 		} catch (e) {
 			logger.error(e);
 			return null;

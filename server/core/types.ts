@@ -1,7 +1,29 @@
-import { Player } from './player.ts';
 import { Server } from './server.ts';
 
 export type XYZ = [number, number, number];
+
+export class TriState {
+	static readonly TRUE = new TriState("true", true);
+	static readonly FALSE = new TriState("false", false);
+	static readonly DEFAULT = new TriState("default", null);
+
+	readonly value: Nullable<boolean>;
+	readonly name: string;
+
+	static of(value: Nullable<boolean>) {
+		return value == null ? TriState.DEFAULT : value ? TriState.TRUE : TriState.FALSE;
+	}
+
+
+	private constructor(name: string, state: Nullable<boolean>) {
+		this.name = name;
+		this.value = state;
+	}
+
+	get(value: boolean): boolean {
+		return this.value ?? value;
+	}
+}
 
 export interface Position {
 	x: number;
@@ -29,27 +51,12 @@ export interface AuthData {
 
 export type Holder<T> = { [i: string]: T };
 
-export interface Command {
-	name: string;
-	description: string;
-	permission?: string;
-	execute: (ctx: CommandContext) => void;
-	help?: HelpPage[];
-}
-
-export interface CommandContext {
-	command: string;
-	player: Nullable<Player>;
-	server: Server;
-	send: (text: string) => void;
-	checkPermission: (permission: string) => Nullable<boolean>;
-}
 
 export interface GroupInterface {
 	name: string;
-	visibleName?: string;
+	displayName?: string;
 	prefix?: string;
-	sufix?: string;
+	suffix?: string;
 
 	permissions: { [i: string]: Nullable<boolean> };
 }

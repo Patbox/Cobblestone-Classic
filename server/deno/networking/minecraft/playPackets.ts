@@ -9,7 +9,10 @@ import * as nbt from '../../../libs/nbt/index.ts';
 import * as uuidUtils from '../../../core/uuid.ts';
 import { ChunkSection } from './chunk/chunkSection.ts';
 import { BitStorage } from './chunk/bitStorage.ts';
-import { cBlockToBlockState, barrierId, itemToCBlock } from './translationMap.ts';
+import { cBlockToBlockState, barrierId, itemToCBlock, blockToItem } from './translationMap.ts';
+//import { blockRegistry } from './registry.ts';
+import * as vec from "../../../libs/vec.ts";
+import { blocksIdsToName } from "../../../core/world/blocks.ts";
 
 export const playPackets: PacketHandler[] = [];
 
@@ -17,7 +20,7 @@ interface ItemStackData {
 	present: boolean;
 	id: number;
 	count: number;
-	nbt?: nbt.Tag;
+	nbt?: nbt.TagObject;
 }
 
 const directions = [
@@ -115,14 +118,19 @@ playPackets[0x27] = (handler, data) => {
 playPackets[0x2a] = (handler, data) => {
 	const slot = data.readShort();
 
-	if (slot < 50 && slot >= 0) {
-		if (data.readBool()) {
-			const id = data.readVarInt()
+	if (slot <= 45 && slot >= 0) {
+
+		const id = data.readBool() ? data.readVarInt() : 0;
+
+		if (id != 0 && itemToCBlock[id] != null) {
 			//const count = data.readByte();
 			//const nbtData = nbt.decode(data.buffer)
 			handler.inventory[slot] = id;
+
+			handler.send(packet.setSlot(0, 0, slot, createItem(id)))
 		} else {
 			handler.inventory[slot] = 0;
+			handler.send(packet.setSlot(0, 0, slot, { id: 0, count: 0, present: false }))
 		}
 	}
 }
@@ -136,21 +144,22 @@ playPackets[0x30] = (handler, data) => {
 	const _cursorX = data.readFloat()
 	const _cursorY = data.readFloat()
 	const _cursorZ = data.readFloat()
-	const _inside = data.readBool()
+	const inside = data.readBool()
 	const sequence = data.readVarInt();
 
-	if (item != 0) {
-
+	if (item != 0 && !inside) {
 		const face = directions[faceId];
 		const block = itemToCBlock[item];
-		if (block != null) {
-			handler.player?._action_block_place(pos[0] + face[0], pos[1] + face[1], pos[2] + face[2], block.numId);
+		const blockPos: XYZ = [pos[0] + face[0], pos[1] + face[1], pos[2] + face[2]]
+
+		if (block != null && !(block.solid && handler.player?.checkColisionBox(blockPos, vec.add(blockPos, [1, 1, 1])))) {
+			handler.player?._action_block_place(blockPos[0], blockPos[1], blockPos[2], block.numId);
 		} else {
-			handler.player?._connectionHandler.setBlock(pos[0] + face[0], pos[1] + face[1], pos[2] + face[2], handler.player.world.getBlockId(pos[0] + face[0], pos[1] + face[1], pos[2] + face[2]))
+			handler.player?._connectionHandler.setBlock(blockPos[0], blockPos[1], blockPos[2], handler.player?.world.getBlockId(blockPos[0], blockPos[1], blockPos[2]))
 		}
-		
-		handler.send(packet.acknowledgeBlockChange(sequence))
 	}
+
+	handler.send(packet.acknowledgeBlockChange(sequence))
 }
 
 export class ModernConnectionHandler implements ConnectionHandler {
@@ -176,9 +185,9 @@ export class ModernConnectionHandler implements ConnectionHandler {
 		if (this._handler.data.minePos && this._handler.data.mineTime && now - this._handler.data.mineTime > 200) {
 			const pos = this._handler.data.minePos;
 			if (this._handler.player?.world.isInBounds(pos[0], pos[1], pos[2])) {
-				const oldBlock = this._handler.player?.world.getBlockId(pos[0], pos[1], pos[2]);
+				//const oldBlock = this._handler.player?.world.getBlockId(pos[0], pos[1], pos[2]);
 				if (this._handler.player?._action_block_break(pos[0], pos[1], pos[2])) {
-					this._handler.send(packet.worldEvent(2001, pos, cBlockToBlockState[oldBlock], false));
+					//this._handler.send(packet.worldEvent(2001, pos, cBlockToBlockState[oldBlock], false));
 				}
 			} else {
 				this._handler.send(packet.setBlock(pos[0], pos[1], pos[2], barrierId));
@@ -211,6 +220,52 @@ export class ModernConnectionHandler implements ConnectionHandler {
 		await sleep(1);
 		this._handler.send(packet.joinGame(this._player, this._server, world));
 		this._handler.send(packet.respawn(world));
+
+		{
+
+			const classicItems: number[] = [];
+
+			for (const item of blockToItem) {
+				if (item != null && itemToCBlock[item.id]?.placeable) {
+					classicItems.push(item.id);
+				}
+			}
+
+			this._handler.send(packet.updateTags([
+				{
+					type: "minecraft:item",
+					values: [{
+						id: "classic",
+						values: classicItems
+					}]
+				},
+				{
+					type: "minecraft:fluid",
+					values: [{
+						id: "water",
+						values: [
+							1, 2
+						]
+					}, {
+						id: "lava",
+						values: [
+							3, 4
+						]
+					}]
+				}
+			]));
+		}
+
+		this._handler.send(new PacketWriter()
+			.writeVarInt(0x0F) // Commands
+			.writeVarInt(1) // Count
+
+			.writeByte(0) // Flags
+			.writeVarInt(0) // Children Count
+
+			.writeVarInt(0)
+		)
+
 		this._handler.send(packet.updateViewDistance(Math.ceil(Math.max(world.getSize()[0], world.getSize()[2]) / 32 + 2)));
 		this._handler.send(packet.updateTickDistance(Math.ceil(Math.max(world.getSize()[0], world.getSize()[2]) / 32 + 2)));
 		this._handler.send(packet.updateViewPos(worldSize[0] / 32, worldSize[2] / 32));
@@ -422,7 +477,7 @@ export const packet = {
 		const builder = new PacketWriter().writeVarInt(0x13).writeByte(window).writeVarInt(stateId).writeShort(slot)
 	
 		if (itemStack.present) {
-			builder.writeBool(false);
+			builder.writeBool(true);
 			builder.writeVarInt(itemStack.id);
 			builder.writeByte(itemStack.count);
 
@@ -497,6 +552,28 @@ export const packet = {
 			.writeBool(false)
 			.writeBool(true)
 			.writeBool(false),
+
+	updateTags: (tags: { type: string, values: { id: string, values: number[] }[]}[]) => {
+		const p = new PacketWriter().writeVarInt(0x68).writeVarInt(tags.length);
+	
+		for (const tagGroup of tags) {
+			p.writeIdentifier(tagGroup.type);
+			p.writeVarInt(tagGroup.values.length);
+
+			for (const tagList of tagGroup.values) {
+				p.writeIdentifier(tagList.id);
+				p.writeVarInt(tagList.values.length);
+
+				for (const id of tagList.values) {
+					p.writeVarInt(id);
+				}
+
+			}
+		}
+
+
+		return p;
+	},
 };
 
 function createRegistryCodec(_server: Server, world: World): nbt.TagObject {
@@ -554,7 +631,7 @@ function createRegistryCodec(_server: Server, world: World): nbt.TagObject {
 						},
 					},
 					id: new nbt.Int(0),
-					name: 'cobblestone:chat',
+					name: 'minecraft:system',
 				},
 				{
 					element: {
@@ -567,7 +644,20 @@ function createRegistryCodec(_server: Server, world: World): nbt.TagObject {
 						},
 					},
 					id: new nbt.Int(1),
-					name: 'cobblestone:action_bar',
+					name: 'minecraft:game_info',
+				},
+				{
+					element: {
+						chat: {
+							decoration: {
+								translation_key: '<%s> %s',
+								parameters: ['sender', 'content'],
+								style: {},
+							},
+						},
+					},
+					id: new nbt.Int(3),
+					name: 'minecraft:chat',
 				},
 			],
 		},
@@ -606,4 +696,26 @@ export function entityIdToUuid(id: number) {
 
 export function patchText(text: string): Holder<unknown> {
 	return { text: text.replaceAll('&', '§') };
+}
+
+function getFancyName(arg0: string) {
+	const result = arg0.replace(/([A-Z])/g, " $1");
+	return result.charAt(0).toUpperCase() + result.slice(1);
+}
+
+function createItem(id: number): ItemStackData {
+
+
+	return { 
+		present: true, 
+		id: id, 
+		count: 1, 
+		nbt: {
+			display: {
+				Name: itemToCBlock[id] 
+				? `{"text": "${getFancyName(blocksIdsToName[itemToCBlock[id].numId])}", "italic": false, "color":"${itemToCBlock[id].placeable ? 'white' : 'gray'}"}`
+				: `{"text": "INVALID", "italic": false, "color":"red"}`
+			}
+		}
+	}
 }

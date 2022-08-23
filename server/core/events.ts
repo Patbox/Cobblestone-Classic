@@ -4,49 +4,49 @@ import { Block } from "./world/blocks.ts";
 import { World } from './world/world.ts';
 
 export interface PlayerConnect {
-	player: Player;
+	readonly player: Player;
 }
 
 export interface PlayerDisconnect {
-	player: Player;
-	reason: string;
+	readonly player: Player;
+	readonly reason: string;
 }
 
 export interface PlayerChangeWorld {
-	player: Player;
-	from: World;
-	to: World;
+	readonly player: Player;
+	readonly from: World;
+	readonly to: World;
 }
 
 export interface PlayerMove {
-	player: Player;
-	position: Position;
+	readonly player: Player;
+	readonly position: Position;
 }
 
 export interface PlayerColides {
-	player: Player;
-	with: Player[];
+	readonly player: Player;
+	readonly with: Player[];
 }
 
 export interface PlayerTeleport {
-	player: Player;
-	position: Position;
-	world: World;
+	readonly player: Player;
+	readonly position: Position;
+	readonly world: World;
 }
 
 export interface PlayerMessage {
-	player: Player;
+	readonly player: Player;
 	message: string;
 }
 
 export interface PlayerCommand {
-	player: Player;
-	command: string;
+	readonly player: Player;
+	readonly command: string;
 }
 
 export interface PlayerChangeBlock {
-	player: Player;
-	position: Position;
-	block: Block;
-	world: World;
+	readonly player: Player;
+	readonly position: Position;
+	readonly block: Block;
+	readonly world: World;
 }

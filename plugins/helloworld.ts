@@ -1,20 +1,21 @@
 export const id = 'hello-world';
 export const name = 'Example plugin';
 export const version = '0.0.0';
-export const cobblestoneApi = '0.0.17';
+export const cobblestoneApi = '0.0.20';
 
-import { Server, WorldView } from '../server/core.ts';
+import { Server, WorldView, Commands } from '../server/core.ts';
+
+const { literal, argument } = Commands; 
 
 export const init = (server: Server) => {
 	server.logger.log('&eHello world!');
 
-	server.addCommand({
-		name: 'hello',
-		description: 'Hello world?',
-		execute: (ctx) => {
-			ctx.send('&cHello World!');
-		},
-	});
+	server.addCommand(
+		literal('hello').executes((_ctx, src) => {
+			src.send('&cHello World!');
+		}),
+		'Hello world?'
+	);
 
 
 	server.addGenerator({
@@ -44,5 +45,17 @@ export const init = (server: Server) => {
 	server.event.PlayerConnect.on((ctx) => {
 		server.logger.log(`Saying hello to ${ctx.value.player.username}`)
 		ctx.value.player.sendMessage('Hello!');
+
+		let text = "";
+
+		for (let x = 0; x < 64; x++) {
+			text += `&${(x % 16).toString(16)}Hello world!`
+		}
+
+		ctx.value.player.sendMessage(text);
+	});
+
+	server.event.PlayerMessage.on(ctx => {
+		ctx.value.message = ctx.value.message.replace('%#', '&')
 	});
 };

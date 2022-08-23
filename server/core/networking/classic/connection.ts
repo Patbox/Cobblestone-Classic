@@ -6,7 +6,7 @@ import { AuthData, Nullable, XYZ } from '../../types.ts';
 import { Player } from '../../player.ts';
 import { Server } from '../../server.ts';
 import { protocol6BlockMap } from './blockMaps.ts';
-import { ConnectionHandler } from "../connection.ts";
+import { ConnectionHandler } from '../connection.ts';
 
 export const serverPackets = new ServerPacketHandler();
 
@@ -26,7 +26,7 @@ export class ClassicConnectionHandler implements ConnectionHandler {
 
 	blockUpdates: Uint8Array[] = [];
 	client: string;
-	private _overrides: AuthData|undefined;
+	private _overrides: AuthData | undefined;
 	_send: (data: Uint8Array) => void;
 
 	constructor(server: Server, ip: string, port: number, send: (data: Uint8Array) => void, overrides?: AuthData) {
@@ -34,11 +34,11 @@ export class ClassicConnectionHandler implements ConnectionHandler {
 		this._server = server;
 		this.ip = ip;
 		this.port = port;
-		this.client = "Minecraft Classic"
+		this.client = 'Minecraft Classic';
 		this._overrides = overrides;
 		this._send = send;
 
-		this._clientPackets.PlayerIdentification.once(async ({ value: playerInfo }) => {			
+		this._clientPackets.PlayerIdentification.once(async ({ value: playerInfo }) => {
 			try {
 				if (!this.setProtocol(playerInfo.protocol)) {
 					this.disconnect('Unsupported protocol!');
@@ -47,7 +47,7 @@ export class ClassicConnectionHandler implements ConnectionHandler {
 					this.disconnect('Invalid nickname!');
 					return;
 				}
-					
+
 				this.sendServerInfo(server);
 
 				const result = await server.authenticatePlayer({
@@ -68,9 +68,7 @@ export class ClassicConnectionHandler implements ConnectionHandler {
 				server.logger.conn('Disconnected player - ' + e);
 				this.disconnect(e);
 			}
-		})
-
-
+		});
 	}
 
 	tick() {}
@@ -214,15 +212,46 @@ export class ClassicConnectionHandler implements ConnectionHandler {
 	sendMessage(player: Nullable<Player>, text: string) {
 		try {
 			const pid = player != null ? player.numId : 0;
+
+			if (text[text.length - 1] == '&') {
+				text[text.length - 1] == ' '
+			}
+
 			if (text.length > 64) {
-				let temp = text.slice(63, text.length - 63);
+				const a: [string, string][] = [];
 
-				this._send(serverPackets.encodeMessage({ player: pid, message: text.slice(0, 62) }));
+				const lines = text.split('&');
+				a.push([lines.shift() ?? '', '']);
 
-				while (temp.length != 0) {
-					this._send(serverPackets.encodeMessage({ player: pid, message: temp.slice(0, 62) }));
+				for (const line of lines) {
+					if (line.length > 1) {
+						const base = line.substring(1, line.length);
+						a.push([base, '&' + line[0]]);
+					}
+				}
 
-					temp = temp.slice(63, text.length - 63);
+				let temp = '';
+				while (a.length > 0) {
+					const x = a.shift() ?? ['', ''];
+					const lenght = temp.length + x[0].length + x[1].length;
+					if (lenght < 64) {
+						temp = temp + x[1] + x[0];
+					} else {
+						const val = (64 - (temp.length + 2));
+						if (val > 0) {
+							temp = temp + x[1] + x[0].substring(0, val);
+
+							x[0] = x[0].substring(val, x[0].length);
+						}
+
+						this._send(serverPackets.encodeMessage({ player: pid, message: temp }));
+						temp = '';
+						a.unshift(x);
+					}
+				}
+
+				if (temp.length > 0) {
+					this._send(serverPackets.encodeMessage({ player: pid, message: temp }));
 				}
 			} else {
 				this._send(serverPackets.encodeMessage({ player: pid, message: text }));

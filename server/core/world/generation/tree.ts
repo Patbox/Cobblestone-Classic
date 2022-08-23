@@ -1,5 +1,5 @@
-import { blockIds } from '../../blocks.ts';
-import { WorldView } from '../../world.ts';
+import { blockIds } from '../blocks.ts';
+import { WorldView } from '../world.ts';
 
 export function createTree(world: WorldView, hash: (...args: number[]) => number, x: number, y: number, z: number, seed: number) {
 	const size = Math.round(hash(seed * 5, 5483, x, y, z));

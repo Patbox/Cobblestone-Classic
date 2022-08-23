@@ -30,7 +30,7 @@ export class Emitter<T> {
 		}
 	}
 
-	_emit(data: T): boolean {
+	_emit(data: T): EventResult<T> {
 		let isCanceled = false;
 
 		const ctx: EventContext<T> = {
@@ -63,7 +63,7 @@ export class Emitter<T> {
 		} catch (e) {
 			this.errorHandler(this, lastEvent, e);
 		}
-		return !isCanceled;
+		return { continue: !isCanceled, value: ctx.value };
 	}
 }
 
@@ -74,5 +74,7 @@ export interface EventContext<T> {
 	position: number;
 	canceled: boolean;
 }
+
+export type EventResult<T> = { readonly continue: boolean, readonly value: T }
 
 export type EventCallback<T> = (ctx: EventContext<T>) => void;

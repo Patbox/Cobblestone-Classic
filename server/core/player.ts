@@ -1,6 +1,6 @@
 import { ConnectionHandler } from './networking/connection.ts';
 import { Server } from './server.ts';
-import { Holder, Nullable, Position, Services } from './types.ts';
+import { Holder, Nullable, Position, Services, XYZ, TriState } from './types.ts';
 import { World } from './world/world.ts';
 import * as vec from '../libs/vec.ts';
 import * as event from './events.ts';
@@ -87,7 +87,7 @@ export class Player {
 		if (this.world != world) {
 			const result = this._server.event.PlayerChangeWorld._emit({ player: this, from: this.world, to: world });
 
-			if (result) {
+			if (result.continue) {
 				this.world._removePlayer(this);
 				this.isInWorld = false;
 
@@ -116,7 +116,7 @@ export class Player {
 	async teleport(world: World, x: number, y: number, z: number, yaw?: number, pitch?: number) {
 		const result = this._server.event.PlayerTeleport._emit({ player: this, position: { x, y, z, yaw: yaw ?? 0, pitch: pitch ?? 0 }, world });
 
-		if (result) {
+		if (result.continue) {
 			if (this.world != world) {
 				await this.changeWorld(world);
 			}
@@ -144,27 +144,20 @@ export class Player {
 	 * Executes command as player
 	 *
 	 * @param command command without /
-	 * @returns Boolean indicating, if executing was successful
 	 */
 	executeCommand(command: string) {
 		const result = this._server.event.PlayerCommand._emit({ player: this, command });
 
-		if (result) {
-			const cmd = this._server.getCommand(command);
-			if (cmd && (!cmd.permission || this.checkPermission(cmd.permission))) {
-				cmd.execute({
-					server: this._server,
-					player: this,
-					command,
-					send: (t) => this.sendMessage(t),
-					checkPermission: (x) => this.checkPermission(x),
-				});
-				return true;
-			}
-			return false;
+		if (result.continue) {
+			this._server.executeCommand(command, {
+				server: this._server,
+				playerOrNull: () => this,
+				player: () => this,
+				send: (t) => this.sendMessage(t),
+				checkPermission: (x) => this.checkPermission(x),
+				sendError: (t) => this.sendMessage("&c" + t)
+			})
 		}
-
-		return true;
 	}
 
 	/**
@@ -189,11 +182,11 @@ export class Player {
 	 * @param permission Permission
 	 * @param value Boolean for setting, null for deletion
 	 */
-	setPermission(permission: string, value: Nullable<boolean>) {
+	setPermission(permission: string, value: TriState) {
 		if (value == null) {
 			delete this.permissions[permission];
 		} else {
-			this.permissions[permission] = value;
+			this.permissions[permission] = value.value;
 		}
 	}
 
@@ -201,18 +194,18 @@ export class Player {
 	 * Checks if player has permission
 	 *
 	 * @param permission Permission
-	 * @param value Boolean if it's set, null if it isn't (aka default)
+	 * @param value TriState
 	 */
-	checkPermission(permission: string): Nullable<boolean> {
+	checkPermission(permission: string): TriState {
 		{
 			const check = this.checkPermissionExact(permission);
-			if (check != null) {
+			if (check != TriState.DEFAULT) {
 				return check;
 			}
 		}
 		{
 			const check = this.checkPermissionExact('*');
-			if (check != null) {
+			if (check != TriState.DEFAULT) {
 				return check;
 			}
 		}
@@ -224,12 +217,12 @@ export class Player {
 			perm += splited[x] + '.';
 
 			const check = this.checkPermissionExact(perm + '*');
-			if (check != null) {
+			if (check != TriState.DEFAULT) {
 				return check;
 			}
 		}
 
-		return null;
+		return TriState.DEFAULT;
 	}
 
 	/**
@@ -238,19 +231,19 @@ export class Player {
 	 * @param permission Permission
 	 * @param value Boolean if it's set, null if it isn't (aka default)
 	 */
-	checkPermissionExact(permission: string): Nullable<boolean> {
+	checkPermissionExact(permission: string): TriState {
 		if (this.permissions[permission] != null) {
-			return !!this.permissions[permission];
+			return this.permissions[permission] ? TriState.TRUE : TriState.FALSE;
 		}
 		for (const groupName of this.groups) {
 			const x = this._server.groups.get(groupName)?.checkPermissionExact(permission);
 
 			if (x != null) {
-				return x;
+				return x ? TriState.TRUE : TriState.FALSE;
 			}
 		}
 
-		return null;
+		return TriState.DEFAULT;
 	}
 
 	/**
@@ -314,7 +307,7 @@ export class Player {
 
 		const result = this._server.event.PlayerMove._emit({ player: this, position: { x, y, z, pitch, yaw } });
 
-		if (result) {
+		if (result.continue) {
 			this.world._movePlayer(this, [x, y, z], yaw, pitch);
 			this.position = [x, y, z];
 			this.pitch = pitch;
@@ -368,7 +361,7 @@ export class Player {
 
 		const result = this._server.event.PlayerBlockPlace._emit({ player: this, position: { x, y, z, yaw: 0, pitch: 0 }, block, world: this.world });
 
-		if (result) {
+		if (result.continue) {
 			this.world.setBlockId(x, y, z, block.numId);
 			this.world.lazyTickNeighborBlocksAndSelf(x, y, z);
 		} else {
@@ -398,7 +391,7 @@ export class Player {
 
 		const result = this._server.event.PlayerBlockBreak._emit({ player: this, position: { x, y, z, yaw: 0, pitch: 0 }, block, world: this.world });
 
-		if (result) {
+		if (result.continue) {
 			this.world.setBlockId(x, y, z, 0);
 			this.world.lazyTickNeighborBlocksAndSelf(x, y, z);
 			return true;
@@ -424,15 +417,15 @@ export class Player {
 		this.checksCache.placedBlockNumber += 1;
 
 		if (message.startsWith('/')) {
-			const result = this.executeCommand(message.slice(1));
-			if (!result) {
+			this.executeCommand(message.slice(1));
+			/*if (!result) {
 				this.sendMessage(this._server.getMessage('noCommand', {}));
-			}
+			}*/
 		} else {
-			const result = this._server.event.PlayerMessage._emit({ player: this, message: message });
+			const result = this._server.event.PlayerMessage._emit({ player: this, message: message.replaceAll('&', '%') });
 
-			if (result) {
-				this._server.sendChatMessage(this._server.getMessage('chat', { player: this.getDisplayName(), message: message.replaceAll('&', '%') }), this);
+			if (result.continue) {
+				this._server.sendChatMessage(this._server.getMessage('chat', { player: this.getDisplayName(), message: result.value.message }), this);
 			}
 		}
 	}
@@ -456,11 +449,11 @@ export class Player {
 	 * Use `Player.checkColision` instead
 	 */
 	_checkColision(player: Player): boolean {
-		const selfMax = vec.add(this.position, [0.4, 1.8, 0.4]);
-		const selfMin = vec.add(this.position, [-0.4, 0, -0.4]);
+		const selfMax = vec.add(this.position, [0.3, 1.8, 0.3]);
+		const selfMin = vec.add(this.position, [-0.3, 0, -0.3]);
 
-		const playerMax = vec.add(player.position, [0.4, 1.8, 0.4]);
-		const playerMin = vec.add(player.position, [-0.4, 0, -0.4]);
+		const playerMax = vec.add(player.position, [0.3, 1.8, 0.3]);
+		const playerMin = vec.add(player.position, [-0.3, 0, -0.3]);
 
 		if (playerMin[0] > selfMax[0]) return false;
 		if (playerMin[1] > selfMax[1]) return false;
@@ -468,6 +461,20 @@ export class Player {
 		if (playerMax[0] < selfMin[0]) return false;
 		if (playerMax[1] < selfMin[1]) return false;
 		if (playerMax[2] < selfMin[2]) return false;
+
+		return true;
+	}
+
+	checkColisionBox(boxStart: XYZ, boxEnd: XYZ): boolean {
+		const selfMax = vec.add(this.position, [0.3, 1.8, 0.3]);
+		const selfMin = vec.add(this.position, [-0.3, 0, -0.3]);
+
+		if (boxStart[0] > selfMax[0]) return false;
+		if (boxStart[1] > selfMax[1]) return false;
+		if (boxStart[2] > selfMax[2]) return false;
+		if (boxEnd[0] < selfMin[0]) return false;
+		if (boxEnd[1] < selfMin[1]) return false;
+		if (boxEnd[2] < selfMin[2]) return false;
 
 		return true;
 	}
@@ -551,15 +558,15 @@ export class VirtualPlayerHolder {
 	 * Sets player's permission
 	 *
 	 * @param permission Permission
-	 * @param value Boolean for setting, null for deletion
+	 * @param value TriScate
 	 */
-	setPermission(permission: string, value: Nullable<boolean>) {
+	setPermission(permission: string, value: TriState) {
 		const perms: Holder<Nullable<boolean>> = this.player?.permissions ?? this.playerData.permissions;
 
-		if (value == null) {
+		if (value == TriState.DEFAULT) {
 			delete perms[permission];
 		} else {
-			perms[permission] = value;
+			perms[permission] = value.value;
 		}
 	}
 
