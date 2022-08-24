@@ -1,7 +1,7 @@
 import { ArgumentType, CommandErrorType, LiteralArgumentBuilder, LiteralCommandNode, RequiredArgumentBuilder, StringReader } from "../libs/brigadier/index.ts";
 import { Player, VirtualPlayerHolder } from "./player.ts";
 import { Group, Server } from "./server.ts";
-import { HelpPage, Nullable, Position, TriState, XYZ } from "./types.ts";
+import { HelpPage, Nullable, TriState, XYZ } from "./types.ts";
 import { World } from "./world/world.ts";
 
 export const ErrorTypes = {

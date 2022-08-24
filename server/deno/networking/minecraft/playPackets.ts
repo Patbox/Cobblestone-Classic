@@ -11,8 +11,8 @@ import { ChunkSection } from './chunk/chunkSection.ts';
 import { BitStorage } from './chunk/bitStorage.ts';
 import { cBlockToBlockState, barrierId, itemToCBlock, blockToItem } from './translationMap.ts';
 //import { blockRegistry } from './registry.ts';
-import * as vec from "../../../libs/vec.ts";
-import { blocksIdsToName } from "../../../core/world/blocks.ts";
+import * as vec from '../../../libs/vec.ts';
+import { blocksIdsToName } from '../../../core/world/blocks.ts';
 
 export const playPackets: PacketHandler[] = [];
 
@@ -30,25 +30,24 @@ const directions = [
 	[0, 0, 1],
 	[-1, 0, 0],
 	[1, 0, 0],
-]
-
+];
 
 // Command packet
-playPackets[0x03] = (handler, data) => {
+playPackets[0x04] = (handler, data) => {
 	handler.player?._action_chat_message('/' + data.readString());
 
 	// Lots of ignored data goes here
 };
 
 // Chat Message packet
-playPackets[0x04] = (handler, data) => {
+playPackets[0x05] = (handler, data) => {
 	handler.player?._action_chat_message(data.readString());
 
 	// Lots of ignored data goes here
 };
 
 // Player Action
-playPackets[0x1c] = (handler, data) => {
+playPackets[0x1d] = (handler, data) => {
 	const status = data.readVarInt();
 	const pos = data.readPosition();
 
@@ -80,15 +79,15 @@ playPackets[0x1c] = (handler, data) => {
 };
 
 // Interact
-playPackets[0x0f] = (_handler, _data) => {};
+playPackets[0x10] = (_handler, _data) => {};
 
 // Set Player Position
-playPackets[0x13] = (handler, data) => {
+playPackets[0x14] = (handler, data) => {
 	handler.player?._action_move(data.readDouble(), data.readDouble(), data.readDouble(), handler.player.yaw, handler.player.pitch);
 };
 
 // Set Player Position and Rotation
-playPackets[0x14] = (handler, data) => {
+playPackets[0x15] = (handler, data) => {
 	handler.player?._action_move(
 		data.readDouble(),
 		data.readDouble(),
@@ -99,7 +98,7 @@ playPackets[0x14] = (handler, data) => {
 };
 
 // Set Player Rotation
-playPackets[0x15] = (handler, data) => {
+playPackets[0x16] = (handler, data) => {
 	handler.player?._action_move(
 		handler.player.position[0],
 		handler.player.position[1],
@@ -110,16 +109,15 @@ playPackets[0x15] = (handler, data) => {
 };
 
 // Set Held Item
-playPackets[0x27] = (handler, data) => {
-	handler.inventorySlot = data.readShort()
-}
+playPackets[0x28] = (handler, data) => {
+	handler.inventorySlot = data.readShort();
+};
 
 // Set Creative Mode Slot
-playPackets[0x2a] = (handler, data) => {
+playPackets[0x2b] = (handler, data) => {
 	const slot = data.readShort();
 
 	if (slot <= 45 && slot >= 0) {
-
 		const id = data.readBool() ? data.readVarInt() : 0;
 
 		if (id != 0 && itemToCBlock[id] != null) {
@@ -127,40 +125,45 @@ playPackets[0x2a] = (handler, data) => {
 			//const nbtData = nbt.decode(data.buffer)
 			handler.inventory[slot] = id;
 
-			handler.send(packet.setSlot(0, 0, slot, createItem(id)))
+			handler.send(packet.setSlot(0, 0, slot, createItem(id)));
 		} else {
 			handler.inventory[slot] = 0;
-			handler.send(packet.setSlot(0, 0, slot, { id: 0, count: 0, present: false }))
+			handler.send(packet.setSlot(0, 0, slot, { id: 0, count: 0, present: false }));
 		}
 	}
-}
+};
 
 // Use Item On
-playPackets[0x30] = (handler, data) => {
+playPackets[0x31] = (handler, data) => {
 	const item = handler.inventory[handler.inventorySlot + 36];
 	const _hand = data.readVarInt();
 	const pos = data.readPosition();
 	const faceId = data.readVarInt();
-	const _cursorX = data.readFloat()
-	const _cursorY = data.readFloat()
-	const _cursorZ = data.readFloat()
-	const inside = data.readBool()
+	const _cursorX = data.readFloat();
+	const _cursorY = data.readFloat();
+	const _cursorZ = data.readFloat();
+	const inside = data.readBool();
 	const sequence = data.readVarInt();
 
 	if (item != 0 && !inside) {
 		const face = directions[faceId];
 		const block = itemToCBlock[item];
-		const blockPos: XYZ = [pos[0] + face[0], pos[1] + face[1], pos[2] + face[2]]
+		const blockPos: XYZ = [pos[0] + face[0], pos[1] + face[1], pos[2] + face[2]];
 
 		if (block != null && !(block.solid && handler.player?.checkColisionBox(blockPos, vec.add(blockPos, [1, 1, 1])))) {
 			handler.player?._action_block_place(blockPos[0], blockPos[1], blockPos[2], block.numId);
 		} else {
-			handler.player?._connectionHandler.setBlock(blockPos[0], blockPos[1], blockPos[2], handler.player?.world.getBlockId(blockPos[0], blockPos[1], blockPos[2]))
+			handler.player?._connectionHandler.setBlock(
+				blockPos[0],
+				blockPos[1],
+				blockPos[2],
+				handler.player?.world.getBlockId(blockPos[0], blockPos[1], blockPos[2])
+			);
 		}
 	}
 
-	handler.send(packet.acknowledgeBlockChange(sequence))
-}
+	handler.send(packet.acknowledgeBlockChange(sequence));
+};
 
 export class ModernConnectionHandler implements ConnectionHandler {
 	private _player: Nullable<Player> = null;
@@ -222,7 +225,6 @@ export class ModernConnectionHandler implements ConnectionHandler {
 		this._handler.send(packet.respawn(world));
 
 		{
-
 			const classicItems: number[] = [];
 
 			for (const item of blockToItem) {
@@ -231,40 +233,51 @@ export class ModernConnectionHandler implements ConnectionHandler {
 				}
 			}
 
-			this._handler.send(packet.updateTags([
-				{
-					type: "minecraft:item",
-					values: [{
-						id: "classic",
-						values: classicItems
-					}]
-				},
-				{
-					type: "minecraft:fluid",
-					values: [{
-						id: "water",
+			this._handler.send(
+				packet.updateTags([
+					{
+						type: 'minecraft:item',
 						values: [
-							1, 2
-						]
-					}, {
-						id: "lava",
+							{
+								id: 'classic',
+								values: classicItems,
+							},
+						],
+					},
+					{
+						type: 'minecraft:fluid',
 						values: [
-							3, 4
-						]
-					}]
-				}
-			]));
+							{
+								id: 'water',
+								values: [1, 2],
+							},
+							{
+								id: 'lava',
+								values: [3, 4],
+							},
+						],
+					},
+				])
+			);
 		}
 
-		this._handler.send(new PacketWriter()
-			.writeVarInt(0x0F) // Commands
-			.writeVarInt(1) // Count
+		this._handler.send(
+			new PacketWriter()
+				.writeVarInt(0x0f) // Commands
+				.writeVarInt(2) // Count
 
-			.writeByte(0) // Flags
-			.writeVarInt(0) // Children Count
+				.writeByte(0) // Flags
+				.writeVarInt(1) // Children Count
+				.writeVarInt(1) // Children Id
 
-			.writeVarInt(0)
-		)
+				.writeByte(2) // Flags
+				.writeVarInt(0) // Children Count
+				.writeString("command") // Name
+				.writeVarInt(5) // Type
+				.writeVarInt(2) // SubType
+
+				.writeVarInt(0) // root index
+		);
 
 		this._handler.send(packet.updateViewDistance(Math.ceil(Math.max(world.getSize()[0], world.getSize()[2]) / 32 + 2)));
 		this._handler.send(packet.updateTickDistance(Math.ceil(Math.max(world.getSize()[0], world.getSize()[2]) / 32 + 2)));
@@ -294,7 +307,7 @@ export class ModernConnectionHandler implements ConnectionHandler {
 					}
 				}
 
-				const packet = new PacketWriter().writeVarInt(0x1f).writeInt(cx).writeInt(cz);
+				const packet = new PacketWriter().writeVarInt(0x21).writeInt(cx).writeInt(cz);
 				packet.writeNbt({ MOTION_BLOCKING: heighmap.toLongArray() });
 				let sectionBytes = 0;
 
@@ -402,8 +415,8 @@ export class ModernConnectionHandler implements ConnectionHandler {
 }
 
 export const packet = {
-	pluginMessage: (channel: string) => new PacketWriter().writeVarInt(0x15).writeIdentifier(channel),
-	keepAlive: (time: number) => new PacketWriter().writeVarInt(0x1e).writeLong(BigInt(time)),
+	pluginMessage: (channel: string) => new PacketWriter().writeVarInt(0x16).writeIdentifier(channel),
+	keepAlive: (time: number) => new PacketWriter().writeVarInt(0x20).writeLong(BigInt(time)),
 	spawnPlayer: (player: Player, uuidOverride?: string) =>
 		new PacketWriter()
 			.writeVarInt(0x02)
@@ -415,19 +428,19 @@ export const packet = {
 			.writeByte(player.yaw)
 			.writeByte(player.pitch),
 
-	removeEntities: (ids: number[]) => new PacketWriter().writeVarInt(0x39).writeIntArray(ids),
-	removeEntity: (id: number) => new PacketWriter().writeVarInt(0x39).writeVarInt(1).writeVarInt(id),
+	removeEntities: (ids: number[]) => new PacketWriter().writeVarInt(0x3b).writeIntArray(ids),
+	removeEntity: (id: number) => new PacketWriter().writeVarInt(0x3b).writeVarInt(1).writeVarInt(id),
 
 	updatePlayerListTexts: (header: Holder<unknown>, footer: Holder<unknown>) =>
-		new PacketWriter().writeVarInt(0x60).writeString(JSON.stringify(header)).writeString(JSON.stringify(footer)),
+		new PacketWriter().writeVarInt(0x63).writeString(JSON.stringify(header)).writeString(JSON.stringify(footer)),
 
 	playerListAdd: (player: Player, uuidOverride?: string) =>
 		new PacketWriter()
-			.writeVarInt(0x34)
+			.writeVarInt(0x37)
 			.writeVarInt(0x0)
 			.writeVarInt(0x1)
 			.writeUUID(uuidOverride ?? entityIdToUuid(player.numId))
-			
+
 			.writeString(player.username.substring(0, Math.min(16, player.username.length)))
 
 			.writeVarInt(0)
@@ -465,42 +478,42 @@ export const packet = {
 			flags |= 0x8;
 		}
 
-		return new PacketWriter().writeVarInt(0x2f).writeByte(flags).writeFloat(flyingSpeed).writeFloat(fov);
+		return new PacketWriter().writeVarInt(0x31).writeByte(flags).writeFloat(flyingSpeed).writeFloat(fov);
 	},
 
-	playerListRemove: (player: number) => new PacketWriter().writeVarInt(0x34).writeVarInt(0x4).writeVarInt(0x1).writeUUID(entityIdToUuid(player)),
+	playerListRemove: (player: number) => new PacketWriter().writeVarInt(0x37).writeVarInt(0x4).writeVarInt(0x1).writeUUID(entityIdToUuid(player)),
 
-	entityStatus: (id: number, status: number) => new PacketWriter().writeVarInt(0x18).writeInt(id).writeByte(status),
-	disconnect: (text: Holder<unknown>) => new PacketWriter().writeVarInt(0x17).writeString(JSON.stringify(text)),
-	heldItemSlot: (slot: number) => new PacketWriter().writeVarInt(0x47).writeByte(slot),
+	entityStatus: (id: number, status: number) => new PacketWriter().writeVarInt(0x1a).writeInt(id).writeByte(status),
+	disconnect: (text: Holder<unknown>) => new PacketWriter().writeVarInt(0x19).writeString(JSON.stringify(text)),
+	heldItemSlot: (slot: number) => new PacketWriter().writeVarInt(0x4a).writeByte(slot),
 	setSlot: (window: number, stateId: number, slot: number, itemStack: ItemStackData) => {
-		const builder = new PacketWriter().writeVarInt(0x13).writeByte(window).writeVarInt(stateId).writeShort(slot)
-	
+		const builder = new PacketWriter().writeVarInt(0x13).writeByte(window).writeVarInt(stateId).writeShort(slot);
+
 		if (itemStack.present) {
 			builder.writeBool(true);
 			builder.writeVarInt(itemStack.id);
 			builder.writeByte(itemStack.count);
 
 			if (itemStack.nbt) {
-				builder.writeNbt(itemStack.nbt)
+				builder.writeNbt(itemStack.nbt);
 			} else {
-				builder.writeByte(0)
+				builder.writeByte(0);
 			}
 		} else {
 			builder.writeBool(false);
 		}
-	
+
 		return builder;
 	},
-	updateViewPos: (x: number, z: number) => new PacketWriter().writeVarInt(0x48).writeVarInt(x).writeVarInt(z),
+	updateViewPos: (x: number, z: number) => new PacketWriter().writeVarInt(0x4b).writeVarInt(x).writeVarInt(z),
 	setBlock: (x: number, y: number, z: number, block: number) => new PacketWriter().writeVarInt(0x09).writePosition([x, y, z]).writeVarInt(block),
 	acknowledgeBlockChange: (id: number) => new PacketWriter().writeVarInt(0x05).writeVarInt(id),
-	chatMessage: (text: Holder<unknown>) => new PacketWriter().writeVarInt(0x5f).writeString(JSON.stringify(text)).writeByte(0),
-	actionbar: (text: Holder<unknown>) => new PacketWriter().writeVarInt(0x5f).writeString(JSON.stringify(text)).writeByte(1),
+	chatMessage: (text: Holder<unknown>) => new PacketWriter().writeVarInt(0x62).writeString(JSON.stringify(text)).writeByte(0),
+	actionbar: (text: Holder<unknown>) => new PacketWriter().writeVarInt(0x62).writeString(JSON.stringify(text)).writeByte(1),
 
 	teleport: (entityId: number, x: number, y: number, z: number, yaw: number, pitch: number, onGround: boolean) =>
 		new PacketWriter()
-			.writeVarInt(0x63)
+			.writeVarInt(0x66)
 			.writeVarInt(entityId)
 			.writeDouble(x)
 			.writeDouble(y)
@@ -509,11 +522,11 @@ export const packet = {
 			.writeByte(pitch)
 			.writeBool(onGround),
 
-	rotateHead: (entityId: number, yaw: number) => new PacketWriter().writeVarInt(0x3c).writeVarInt(entityId).writeByte(yaw),
+	rotateHead: (entityId: number, yaw: number) => new PacketWriter().writeVarInt(0x3f).writeVarInt(entityId).writeByte(yaw),
 
 	respawn: (world: World) =>
 		new PacketWriter()
-			.writeVarInt(0x3b)
+			.writeVarInt(0x3e)
 			.writeIdentifier('w:' + world.fileName.toLocaleLowerCase())
 			.writeIdentifier('w:' + world.fileName.toLocaleLowerCase())
 			.writeLong(0n)
@@ -525,15 +538,15 @@ export const packet = {
 			.writeBool(false),
 
 	worldEvent: (id: number, position: XYZ, data: number, noDistance: boolean) =>
-		new PacketWriter().writeVarInt(0x20).writeInt(id).writePosition(position).writeInt(data).writeBool(noDistance),
+		new PacketWriter().writeVarInt(0x23).writeInt(id).writePosition(position).writeInt(data).writeBool(noDistance),
 
-	updateViewDistance: (distance: number) => new PacketWriter().writeVarInt(0x49).writeVarInt(distance),
+	updateViewDistance: (distance: number) => new PacketWriter().writeVarInt(0x4c).writeVarInt(distance),
 
-	updateTickDistance: (distance: number) => new PacketWriter().writeVarInt(0x57).writeVarInt(distance),
+	updateTickDistance: (distance: number) => new PacketWriter().writeVarInt(0x5a).writeVarInt(distance),
 
 	joinGame: (player: Player, server: Server, world: World) =>
 		new PacketWriter()
-			.writeVarInt(0x23)
+			.writeVarInt(0x25)
 			.writeInt(player.numId)
 			.writeBool(false)
 			.writeByte(0x01) // Gamemode
@@ -553,9 +566,9 @@ export const packet = {
 			.writeBool(true)
 			.writeBool(false),
 
-	updateTags: (tags: { type: string, values: { id: string, values: number[] }[]}[]) => {
-		const p = new PacketWriter().writeVarInt(0x68).writeVarInt(tags.length);
-	
+	updateTags: (tags: { type: string; values: { id: string; values: number[] }[] }[]) => {
+		const p = new PacketWriter().writeVarInt(0x6b).writeVarInt(tags.length);
+
 		for (const tagGroup of tags) {
 			p.writeIdentifier(tagGroup.type);
 			p.writeVarInt(tagGroup.values.length);
@@ -567,10 +580,8 @@ export const packet = {
 				for (const id of tagList.values) {
 					p.writeVarInt(id);
 				}
-
 			}
 		}
-
 
 		return p;
 	},
@@ -623,40 +634,15 @@ function createRegistryCodec(_server: Server, world: World): nbt.TagObject {
 				{
 					element: {
 						chat: {
-							decoration: {
-								translation_key: '%s',
-								parameters: ['content'],
-								style: {},
-							},
+							translation_key: 'chat.type.text',
+							parameters: ['sender', 'content'],
+						},
+						narration: {
+							translation_key: 'chat.type.text.narrate',
+							parameters: ['sender', 'content'],
 						},
 					},
 					id: new nbt.Int(0),
-					name: 'minecraft:system',
-				},
-				{
-					element: {
-						overlay: {
-							decoration: {
-								translation_key: '%s',
-								parameters: ['content'],
-								style: {},
-							},
-						},
-					},
-					id: new nbt.Int(1),
-					name: 'minecraft:game_info',
-				},
-				{
-					element: {
-						chat: {
-							decoration: {
-								translation_key: '<%s> %s',
-								parameters: ['sender', 'content'],
-								style: {},
-							},
-						},
-					},
-					id: new nbt.Int(3),
 					name: 'minecraft:chat',
 				},
 			],
@@ -699,23 +685,23 @@ export function patchText(text: string): Holder<unknown> {
 }
 
 function getFancyName(arg0: string) {
-	const result = arg0.replace(/([A-Z])/g, " $1");
+	const result = arg0.replace(/([A-Z])/g, ' $1');
 	return result.charAt(0).toUpperCase() + result.slice(1);
 }
 
 function createItem(id: number): ItemStackData {
-
-
-	return { 
-		present: true, 
-		id: id, 
-		count: 1, 
+	return {
+		present: true,
+		id: id,
+		count: 1,
 		nbt: {
 			display: {
-				Name: itemToCBlock[id] 
-				? `{"text": "${getFancyName(blocksIdsToName[itemToCBlock[id].numId])}", "italic": false, "color":"${itemToCBlock[id].placeable ? 'white' : 'gray'}"}`
-				: `{"text": "INVALID", "italic": false, "color":"red"}`
-			}
-		}
-	}
+				Name: itemToCBlock[id]
+					? `{"text": "${getFancyName(blocksIdsToName[itemToCBlock[id].numId])}", "italic": false, "color":"${
+							itemToCBlock[id].placeable ? 'white' : 'gray'
+					  }"}`
+					: `{"text": "INVALID", "italic": false, "color":"red"}`,
+			},
+		},
+	};
 }

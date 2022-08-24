@@ -5,6 +5,10 @@ import { Nullable } from "../../core/types.ts";
 import { ClassicConnectionHandler } from "../../core/networking/classic/connection.ts";
 import { packetIdsToLenght } from "../../core/networking/classic/clientPackets.ts";
 import { MCProtocolHandler } from "./minecraft/handler.ts";
+import { Base64 } from '../../core/deps.ts';
+
+const decoder = new TextDecoder();
+const encoder = new TextEncoder();
 
 let idBase = 0;
 
@@ -45,7 +49,7 @@ export class TpcConnectionHandler extends WrappedConnectionHandler {
 				} else if (this._modernHandler) {
 					this._modernHandler._decode(chunks);
 				} else {
-					this.decodeFirstPacket(chunks);
+					await this.decodeFirstPacket(chunks);
 				}
 			}
 		} catch (e) {
@@ -55,7 +59,7 @@ export class TpcConnectionHandler extends WrappedConnectionHandler {
 		this.close();
 	}
 
-	protected decodeFirstPacket(c: Uint8Array) {
+	protected async decodeFirstPacket(c: Uint8Array) {
 		if (this._conn == null) {
 			return;
 		}
@@ -92,17 +96,73 @@ export class TpcConnectionHandler extends WrappedConnectionHandler {
 					if (data.buffer.length > data.pos) {
 						this._modernHandler._decode(c.slice(data.pos, data.buffer.length));
 					}
+					return;
 				}
-			} catch (e) {
-				this.handleError(e);
+			} catch (_e) {
+				// noop
 			}
 		}
+
+		try {
+			const lines = decoder.decode(this._buffer);
+
+			if (lines.includes('HTTP')) {
+				let isWebsocket = false;
+				let webSocketKey;
+				//let webSocketProtocols;
+				for (const line of lines.split('\n')) {
+					const [ key, value ] = line.split(': ', 2)
+
+					if (key.toLocaleLowerCase() == 'upgrade') {
+						if (line.includes('websocket')) {
+							isWebsocket = true;
+						} else if (key.toLocaleLowerCase() == 'sec-websocket-key') {
+							webSocketKey = value;
+						} /*else if (key.toLocaleLowerCase() == 'sec-websocket-protocol') {
+							webSocketProtocols = value;
+						}*/
+					}
+				}
+				
+				if (isWebsocket) {
+					const res = 'HTTP/1.1 101 Switching Protocols\r\n' +
+					`Server: ${Server.softwareId}/${Server.softwareVersion} on Deno\r\n` +
+					'Connection: upgrade\r\n' +
+					'Upgrade: websocket\r\n' +
+					'Sec-WebSocket-Version: 13\r\n' +
+					`Sec-WebSocket-Accept: ${Base64.encode(await crypto.subtle.digest("SHA-1", encoder.encode(webSocketKey + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')))}`;
+
+					await this._conn.write(encoder.encode(res));
+					return;
+				} else {
+					const out = `Connect using compatible client! Currently supported: Minecraft 1.19.1, Minecraft Classic 0.30 (or compatible)`
+
+					const res = 'HTTP/1.1 200 Ok\r\n' +
+					`Server: ${Server.softwareId}/${Server.softwareVersion} on Deno\r\n` +
+					'Connection: close\r\n' +
+					`Date: ${new Date().toUTCString()}\r\n` +
+					'Content-Language: en-US\r\n' +
+					`Content-Length: ${out.length}\r\n` +
+					'Content-Type: text/html; charset=utf-8\r\n\r\n'
+					
+					+ out;
+
+					await this._conn.write(encoder.encode(res));
+					this.close()
+					return;
+				}
+			}
+		} catch (_e) {
+			//noop
+		}
+		
+
+		this.handleError('Unknown protocol!')
 	}
 
 	async _send(packet: Uint8Array) {
 		try {
 			await this._conn?.write(packet);	
-
 		} catch (e) {
 			this.handleError(e);
 		}
@@ -130,6 +190,7 @@ export class TpcConnectionHandler extends WrappedConnectionHandler {
 		try {
 			this._conn?.close();
 		} catch (_e) {
+		
 			// no-op
 		} finally {
 			this._conn = null;
@@ -148,7 +209,7 @@ export class TpcConnectionHandler extends WrappedConnectionHandler {
 	}
 
 	protected handleError(e: unknown, triggerDisconnect = true) {
-		this._server.logger.conn(`Error occured with connection ${this.getIp()}:${this.getPort()} (${this._handler?.getPlayer()?.uuid ?? 'unknown'})!`);
+		this._server.logger.conn(`Error occured with connection ${this.getIp()}:${this.getPort()} (${this._handler?.getPlayer()?.uuid ?? 'unknown player'})!`);
 		if (e instanceof Error) {
 			this._server.logger.conn(e.name + ' - ' + e.message);
 
@@ -156,10 +217,17 @@ export class TpcConnectionHandler extends WrappedConnectionHandler {
 				this._server.logger.conn(e.stack);
 			}
 
+		} else {
+			this._server.logger.conn(e + "");
 		}
 
 		if (triggerDisconnect) {
 			this.disconnect(`${e}`);
+			try {
+				this._conn?.close();
+			} catch (_e) {
+				// noop
+			}
 		}
 	}
 }
