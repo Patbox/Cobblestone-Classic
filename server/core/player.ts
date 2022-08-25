@@ -301,6 +301,10 @@ export class Player {
 	 * Do not use unless you know what are you doing
 	 */
 	_action_move(x: number, y: number, z: number, yaw: number, pitch: number) {
+		if (!this.isInWorld) {
+			return;
+		}
+
 		if (vec.equals([x, y, z], this.position) && this.yaw == yaw && this.pitch == pitch) {
 			return;
 		}

@@ -393,16 +393,23 @@ export class Server {
 				source.sendError(e.message)
 			} else {
 				source.sendError("Internal error occured while executing this command! See logs for details");
+				let x = e;
+				if (e != null && typeof e == 'object' && 'value' in e) {
+					// deno-lint-ignore no-ex-assign
+					e = (<{value: unknown}>e).value;
+
+				}
+
 				if (e instanceof Error) {
 					this.logger.error("=============")
 					this.logger.error(e.name)
-					this.logger.error("=============")
 					this.logger.error(e.message)
 					if (e.stack) {
 						this.logger.error("")
 						this.logger.error("Stack:")
 						this.logger.error(e.stack)
 					}
+					this.logger.error("=============")
 				}
 			}
 			return -1;

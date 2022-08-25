@@ -1,6 +1,6 @@
 import { ConnectionHandler, WrappedConnectionHandler } from '../../core/networking/connection.ts';
 import { Server } from '../../core/server.ts';
-import { PacketReader, PacketWriter } from './minecraft/packet.ts';
+import { PacketReader } from './minecraft/packet.ts';
 import { Nullable } from "../../core/types.ts";
 import { ClassicConnectionHandler } from "../../core/networking/classic/connection.ts";
 import { packetIdsToLenght } from "../../core/networking/classic/clientPackets.ts";

@@ -131,6 +131,10 @@ export class DenoServer extends Server {
 	stopServer() {
 		super.stopServer();
 
+		this.stopDeno();
+	}
+
+	protected stopDeno() {
 		setTimeout(() => Deno.exit(), 4000);
 	}
 
@@ -145,14 +149,14 @@ export class DenoServer extends Server {
 			let service: Nullable<Services> = null;
 			let authProvider: AuthProvider = 'None';
 
-			const classicCheck = (provider: AuthProvider) => {
-				return decoder.decode(crypto2.digest("MD5", encoder.encode(this._salt[provider] + data.username), undefined)) == data.secret;
+			const classicCheck = async (provider: AuthProvider) => {
+				return decoder.decode(await crypto2.subtle.digest("MD5", encoder.encode(this._salt[provider] + data.username))) == data.secret;
 			}
 
-			if (classicCheck("Betacraft")) {
+			if (await classicCheck("Betacraft")) {
 				service = "Minecraft";
 				authProvider = "Betacraft";
-			} else if (classicCheck("ClassiCube")) {
+			} else if (await classicCheck("ClassiCube")) {
 				service = "ClassiCube";
 				authProvider = "ClassiCube";
 			}

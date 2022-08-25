@@ -138,8 +138,13 @@ export class ClassicConnectionHandler implements ConnectionHandler {
 
 	async sendWorld(world: World) {
 		try {
+			if (!this._player) {
+				throw "No player!"
+			}
+
 			this.sendingWorld = true;
 			await this._send(serverPackets.encodeLevelInitialize());
+			await this.sendTeleport(this._player, this._player.position, this._player.yaw, this._player.pitch);
 
 			const blockData = new Uint8Array(world.blockData.length + 4);
 			const view = new DataView(blockData.buffer, blockData.byteOffset, blockData.byteLength);
@@ -175,16 +180,8 @@ export class ClassicConnectionHandler implements ConnectionHandler {
 
 			this.sendingWorld = false;
 			world.players.forEach((p) => this.sendSpawnPlayer(p));
-			this._player ? this.sendSpawnPlayer(this._player) : null;
-			await wait(10);
-			this._player
-				? await this.sendTeleport(
-						this._player,
-						[world.spawnPoint.x, world.spawnPoint.y, world.spawnPoint.z],
-						world.spawnPoint.yaw,
-						world.spawnPoint.pitch
-				  )
-				: null;
+			this.sendSpawnPlayer(this._player);
+			await this.sendTeleport(this._player, this._player.position, this._player.yaw, this._player.pitch);
 		} catch (e) {
 			this.handleError(e);
 		}

@@ -218,11 +218,14 @@ export class ModernConnectionHandler implements ConnectionHandler {
 		if (!this._player) {
 			throw 'Player is not set!';
 		}
-
 		const worldSize = world.getSize();
 		await sleep(1);
 		this._handler.send(packet.joinGame(this._player, this._server, world));
 		this._handler.send(packet.respawn(world));
+		this._handler.send(packet.setTitleAnimation(0, 10000000, 0))
+		this._handler.send(packet.setTitleText({text: 'Loading World...'}))
+		this._handler.send(packet.setSubTitleText({text: 'Preparing...'}))
+
 
 		{
 			const classicItems: number[] = [];
@@ -283,8 +286,14 @@ export class ModernConnectionHandler implements ConnectionHandler {
 		this._handler.send(packet.updateTickDistance(Math.ceil(Math.max(world.getSize()[0], world.getSize()[2]) / 32 + 2)));
 		this._handler.send(packet.updateViewPos(worldSize[0] / 32, worldSize[2] / 32));
 		await sleep(1);
+		await this.sendTeleport(this._player, this._player.position, this._player.yaw, this._player.pitch);
 
 		const heightMapBits = Math.ceil(Math.log2(worldSize[1] + 2));
+
+
+		let chunksSend = 0;
+		const chunksAll = Math.floor(worldSize[0] / 16 + 2) * Math.floor(worldSize[2] / 16 + 2)
+		this._handler.send(packet.setSubTitleText({text: 'Loading terrain: 0%'}))
 
 		for (let cx = -1; cx < worldSize[0] / 16 + 1; cx++) {
 			for (let cz = -1; cz < worldSize[2] / 16 + 1; cz++) {
@@ -307,46 +316,55 @@ export class ModernConnectionHandler implements ConnectionHandler {
 					}
 				}
 
-				const packet = new PacketWriter().writeVarInt(0x21).writeInt(cx).writeInt(cz);
-				packet.writeNbt({ MOTION_BLOCKING: heighmap.toLongArray() });
-				let sectionBytes = 0;
+				{
+					const packet = new PacketWriter().writeVarInt(0x21).writeInt(cx).writeInt(cz);
+					packet.writeNbt({ MOTION_BLOCKING: heighmap.toLongArray() });
+					let sectionBytes = 0;
 
-				for (const section of chunkSections) {
-					sectionBytes += ChunkSection.writeSize(section);
+					for (const section of chunkSections) {
+						sectionBytes += ChunkSection.writeSize(section);
+					}
+
+					packet.writeVarInt(sectionBytes);
+
+					for (const section of chunkSections) {
+						ChunkSection.write(packet, section);
+					}
+
+					packet.writeVarInt(0);
+
+					packet.writeBool(true);
+
+					const emptyLightSet = new BitSet(chunkSections.length + 2);
+					packet.writeLongArray(emptyLightSet.words);
+					packet.writeLongArray(emptyLightSet.words);
+					packet.writeLongArray(emptyLightSet.words);
+					packet.writeLongArray(emptyLightSet.words);
+
+					packet.writeVarInt(0);
+					packet.writeVarInt(0);
+
+					this._handler.send(packet);
 				}
+				chunksSend++;
+				this._handler.send(packet.setSubTitleText({text: `Loading terrain: ${Math.floor(chunksSend / chunksAll * 100) }%`}))
 
-				packet.writeVarInt(sectionBytes);
-
-				for (const section of chunkSections) {
-					ChunkSection.write(packet, section);
-				}
-
-				packet.writeVarInt(0);
-
-				packet.writeBool(true);
-
-				const emptyLightSet = new BitSet(chunkSections.length + 2);
-				packet.writeLongArray(emptyLightSet.words);
-				packet.writeLongArray(emptyLightSet.words);
-				packet.writeLongArray(emptyLightSet.words);
-				packet.writeLongArray(emptyLightSet.words);
-
-				packet.writeVarInt(0);
-				packet.writeVarInt(0);
-
-				this._handler.send(packet);
 				await sleep(10);
 			}
 		}
+
+		await sleep(1);
+
+		await this.sendTeleport(this._player, this._player.position, this._player.yaw, this._player.pitch);
+
 		world.players.forEach((p) => this.sendSpawnPlayer(p));
 
 		this._handler.send(packet.playerListAdd(this._player, this._handler.selfUuid));
 
-		await sleep(1);
-
-		await this.sendTeleport(this._player, [world.spawnPoint.x, world.spawnPoint.y, world.spawnPoint.z], world.spawnPoint.yaw, world.spawnPoint.pitch);
-
 		this._handler.send(packet.abilities(true, false, false, true, 0.05, 0.1));
+		this._handler.send(packet.setSubTitleText({text: ''}))
+		this._handler.send(packet.setTitleText({text: ''}))
+		this._handler.send(packet.setTitleAnimation(0, 0, 0))
 		await sleep(1);
 	}
 
@@ -354,7 +372,7 @@ export class ModernConnectionHandler implements ConnectionHandler {
 		this._handler.send(packet.setBlock(x, y, z, cBlockToBlockState[block] ?? 0));
 	}
 
-	sendMessage(player: Nullable<Player>, text: string): void {
+	sendMessage(_player: Nullable<Player>, text: string): void {
 		this._handler.send(packet.chatMessage(patchText(text)));
 	}
 
@@ -410,7 +428,7 @@ export class ModernConnectionHandler implements ConnectionHandler {
 	}
 
 	getClient(): string {
-		return 'Minecraft 1.19';
+		return 'Minecraft 1.19.1';
 	}
 }
 
@@ -585,6 +603,10 @@ export const packet = {
 
 		return p;
 	},
+
+	setSubTitleText: (text: Holder<unknown>) => new PacketWriter().writeVarInt(0x5B).writeString(JSON.stringify(text)),
+	setTitleText: (text: Holder<unknown>) => new PacketWriter().writeVarInt(0x5D).writeString(JSON.stringify(text)),
+	setTitleAnimation: (fadeIn: number, stay: number, fadeOut: number) => new PacketWriter().writeVarInt(0x5E).writeInt(fadeIn).writeInt(stay).writeInt(fadeOut),
 };
 
 function createRegistryCodec(_server: Server, world: World): nbt.TagObject {

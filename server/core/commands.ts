@@ -85,10 +85,26 @@ export class KeyedArgumentType<T> extends ArgumentType<T> {
 	}
 }
 
-export class XYZArgumentType extends ArgumentType<XYZ> {
+export class XYZFloatArgumentType extends ArgumentType<XYZ> {
 	parse(reader: StringReader): XYZ {
-		return [ reader.readFloat(), reader.readFloat(), reader.readFloat() ];
+		const x = reader.readFloat();
+		reader.skip()
+		const y = reader.readFloat();
+		reader.skip()
+		const z = reader.readFloat();
+		return [ x, y, z ];
 	}
+}
+
+export class BlockPosArgumentType extends ArgumentType<XYZ> {
+	parse(reader: StringReader): XYZ {
+		const x = reader.readInt();
+		reader.skip()
+		const y = reader.readInt();
+		reader.skip()
+		const z = reader.readInt();
+		return [ x, y, z ];
+		}
 }
 
 export class TriStateArgumentType extends ArgumentType<TriState> {

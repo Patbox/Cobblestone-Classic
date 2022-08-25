@@ -24,14 +24,14 @@ export function setupGenerators(server: Server) {
 		name: 'grasslands',
 		software: 'Cobblestone',
 		minimalSize: [32, 64, 32],
-		generate: workerGenerator('./generators/grasslands.ts'),
+		generate: workerGenerator('./worldgen/grasslands.ts'),
 	});
 
 	server.addGenerator({
 		name: 'island',
 		software: 'Cobblestone',
 		minimalSize: [64, 64, 64],
-		generate: workerGenerator('./generators/island.ts'),
+		generate: workerGenerator('./worldgen/island.ts'),
 	});
 
 	server.addGenerator({

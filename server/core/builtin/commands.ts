@@ -1,5 +1,5 @@
 import { word, greedyString, IntegerArgumentType } from '../../libs/brigadier/index.ts';
-import { CommandInfo, literal, argument, KeyedArgumentType, TriStateArgumentType, XYZArgumentType } from '../commands.ts';
+import { CommandInfo, literal, argument, KeyedArgumentType, TriStateArgumentType, XYZFloatArgumentType, BlockPosArgumentType } from '../commands.ts';
 import { Player, VirtualPlayerHolder } from '../player.ts';
 import { Group, Server } from '../server.ts';
 import { TriState, XYZ } from '../types.ts';
@@ -430,7 +430,7 @@ export function setupCommands(server: Server, infos: Map<string, CommandInfo>) {
 					.requires((ctx) => ctx.checkPermission('command.world.create').get(false))
 					.then(
 						argument('name', word()).then(
-							argument('size', new XYZArgumentType()).then(
+							argument('size', new BlockPosArgumentType()).then(
 								argument('generator', new KeyedArgumentType('generator', (x) => server.getAllGenerators().get(x)))
 									.executes((ctx, src) => server.executeCommand(ctx.getInput() + ' 0', src))
 									.then(
@@ -452,16 +452,14 @@ export function setupCommands(server: Server, infos: Map<string, CommandInfo>) {
 											const [minX, minY, minZ] = generator.minimalSize;
 
 											if (
-												isNaN(sizeX) ||
-												isNaN(sizeY) ||
-												isNaN(sizeZ) ||
-												sizeX <= minX ||
-												sizeY <= minY ||
-												sizeZ <= minZ ||
+												sizeX < minX ||
+												sizeY < minY ||
+												sizeZ < minZ ||
 												sizeX > 1024 ||
 												sizeY > 1024 ||
 												sizeZ > 1024
 											) {
+	
 												src.sendError(`Invalid world size!`);
 												src.sendError(`Minimal suppored: &6${minX} ${minY} ${minZ}`);
 												src.sendError(`Maximal: &61024 1024 1024`);
