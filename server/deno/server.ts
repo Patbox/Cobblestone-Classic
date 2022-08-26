@@ -15,9 +15,9 @@ export class DenoServer extends Server {
 	_serverIcon: string | undefined;
 	protected _shouldLoadPlugins: boolean;
 
-	static readonly denoVersion = '1.24.x';
-	static readonly denoVersionMin = '1.24.0';
-	static readonly denoVersionMax = '1.25.0';
+	static readonly denoVersion = '1.25.x';
+	static readonly denoVersionMin = '1.25.0';
+	static readonly denoVersionMax = '1.26.0';
 
 	constructor(loadPlugins = true, devMode = false) {
 		super(fileHelper, logger, devMode);

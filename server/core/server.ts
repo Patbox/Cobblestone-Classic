@@ -1,6 +1,6 @@
 import { Emitter, EventCallback, EventErrorHandler } from '../libs/emitter.ts';
 import { Player, PlayerData, VirtualPlayerHolder } from './player.ts';
-import { PhysicsLevel, World, WorldData, WorldGenerator } from './world/world.ts';
+import { GenerationStatusListener, PhysicsLevel, World, WorldData, WorldGenerator } from './world/world.ts';
 
 import * as event from './events.ts';
 import { AuthData, Holder, GroupInterface, Plugin, Nullable, XYZ, HelpPage, TriState } from './types.ts';
@@ -177,7 +177,15 @@ export class Server {
 
 			if (!this.loadWorld(this.config.defaultWorldName)) {
 				this.logger.log('Creating default world...');
-				await this.createWorld(this.config.defaultWorldName, [256, 128, 256], this.generators.get('island') ?? emptyGenerator); // fs
+				let lastPercent = -999;
+				let lastText = '';
+				await this.createWorld(this.config.defaultWorldName, [256, 128, 256], this.generators.get('island') ?? emptyGenerator, 0, null, (text, percent) => {
+					if (lastText != text || Math.abs(lastPercent - percent) >= 10) {
+						lastPercent = percent;
+						lastText = text;
+						this.logger.log(`&eGenerating ${this.config.defaultWorldName}&7: ${text} &8(${percent.toFixed()}%)`);
+					}
+				}); // fs
 			}
 
 			this.worlds.forEach((world) => {
@@ -389,16 +397,16 @@ export class Server {
 		try {
 			return this._commandDispatcher.execute(command, source);
 		} catch (e: unknown) {
+			if (e != null && typeof e == 'object' && 'value' in e) {
+				// deno-lint-ignore no-ex-assign
+				e = (<{value: unknown}>e).value;
+
+			}
+
 			if (e instanceof CommandSyntaxError) {
 				source.sendError(e.message)
 			} else {
-				source.sendError("Internal error occured while executing this command! See logs for details");
-				let x = e;
-				if (e != null && typeof e == 'object' && 'value' in e) {
-					// deno-lint-ignore no-ex-assign
-					e = (<{value: unknown}>e).value;
-
-				}
+				source.sendError("Internal error occured while executing this command! See logs for details");				
 
 				if (e instanceof Error) {
 					this.logger.error("=============")
@@ -515,13 +523,16 @@ export class Server {
 	 * @param player Creator of world (optional)
 	 * @returns Generated world or null (if it fails)
 	 */
-	async createWorld(name: string, size: XYZ, generator: WorldGenerator, seed?: number, player?: Player): Promise<Nullable<World>> {
+	async createWorld(name: string, size: XYZ, generator: WorldGenerator, seed?: number, player?: Nullable<Player>, listener? : GenerationStatusListener): Promise<Nullable<World>> {
 		try {
 			if (this.worlds.has(name)) {
+				listener?.('Already exists!', 100)
 				return this.worlds.get(name) ?? null;
 			}
+			listener?.('Starting generation', 0)
 
-			const view = await generator.generate(size[0], size[1], size[2], seed);
+			const view = await generator.generate(size[0], size[1], size[2], seed, listener);
+			listener?.('World generated', 100)
 
 			const world = new World(
 				name.toLowerCase().replace(' ', '_'),
@@ -542,10 +553,14 @@ export class Server {
 			);
 
 			this.worlds.set(world.fileName, world);
+			listener?.('Saving', 0)
 			this.saveWorld(world);
+			listener?.('Saving', 100)
 
 			return world;
 		} catch (e) {
+			listener?.('Error!', -1)
+
 			this.logger.error(
 				`Couldn't create world ${name} (size: ${size}, generator: ${generator?.name}, seed: ${seed ?? 0}, player: ${player?.username ?? null})!`
 			);

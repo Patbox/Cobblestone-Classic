@@ -8,4 +8,4 @@ goto start
 
 :done
 
-deno run --allow-net --allow-read --allow-write --allow-env --no-check --unstable server/deno.ts dev-mode %args%
+deno run --allow-net --allow-read --allow-write --allow-env --check=all --unstable server/deno.ts dev-mode %args%

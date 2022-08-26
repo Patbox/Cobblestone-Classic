@@ -1,13 +1,12 @@
-import { blockIds } from '../blocks.ts';
 import { WorldView } from '../world.ts';
 
-export function createTree(world: WorldView, hash: (...args: number[]) => number, x: number, y: number, z: number, seed: number) {
+export function createTree(world: WorldView, hash: (...args: number[]) => number, x: number, y: number, z: number, seed: number, log: number, leaves: number) {
 	const size = Math.round(hash(seed * 5, 5483, x, y, z));
 	const height = 5 + Math.round(hash(seed, x, y, z)) + size * 2;
 
 	for (let y2 = 0; y2 < height; y2++) {
 		if (world.isInBounds(x, y + y2, z) && world.getBlockId(x, y + y2, z) == 0) {
-			world.setBlockId(x, y + y2, z, blockIds.wood);
+			world.setBlockId(x, y + y2, z, log);
 		}
 	}
 
@@ -20,20 +19,20 @@ export function createTree(world: WorldView, hash: (...args: number[]) => number
 					hash(5435, x + x2, y + y2 + height - 1, z + z2, seed * 2) > 0.3 &&
 					dist(x2, y2, z2) <= 4 + size
 				) {
-					world.setBlockId(x + x2, y + y2 + height - 1, z + z2, blockIds.leaves);
+					world.setBlockId(x + x2, y + y2 + height - 1, z + z2, leaves);
 				}
 			}
 		}
 	}
 }
 
-export function createClassicTree(world: WorldView, hash: (...args: number[]) => number, x: number, y: number, z: number, seed: number) {
+export function createClassicTree(world: WorldView, hash: (...args: number[]) => number, x: number, y: number, z: number, seed: number, log: number, leaves: number) {
 	const size = Math.round(hash(seed * 5, 5483, x, y, z));
 	const height = 4 + size * 2;
 
 	for (let y2 = 0; y2 < height; y2++) {
 		if (world.isInBounds(x, y + y2, z) && world.getBlockId(x, y + y2, z) == 0) {
-			world.setBlockId(x, y + y2, z, blockIds.wood);
+			world.setBlockId(x, y + y2, z, log);
 		}
 	}
 
@@ -51,7 +50,7 @@ export function createClassicTree(world: WorldView, hash: (...args: number[]) =>
 					world.getBlockId(tX, tY, tZ) == 0 &&
 					((absX != absZ || absX != 2) || hash(567, tX, tY, tZ, seed * 2) > 0.5)
 				) {
-					world.setBlockId(tX, tY, tZ, blockIds.leaves);
+					world.setBlockId(tX, tY, tZ, leaves);
 				}
 			}
 		}
@@ -70,7 +69,7 @@ export function createClassicTree(world: WorldView, hash: (...args: number[]) =>
 					world.getBlockId(tX, tY, tZ) == 0 &&
 					((absX != absZ || absX != 1) || (hash(567, tX, tY, tZ, seed * 2) > 0.6 && y2 != 1))
 				) {
-					world.setBlockId(tX, tY, tZ, blockIds.leaves);
+					world.setBlockId(tX, tY, tZ, leaves);
 				}
 			}
 		}

@@ -391,7 +391,7 @@ export interface WorldGenerator {
 	name: string;
 	software: string;
 	minimalSize: [number, number, number];
-	generate: (sizeX: number, sizeY: number, sizeZ: number, seed?: number) => Promise<WorldView>;
+	generate: (sizeX: number, sizeY: number, sizeZ: number, seed?: number, statusConsumer?: GenerationStatusListener) => Promise<WorldView>;
 }
 
 export interface WorldData {
@@ -419,6 +419,9 @@ export interface WorldData {
 
 	physics: PhysicsLevel;
 }
+
+export type GenerationStatusListener = (text: string, percentage: number) => void;
+
 
 export enum PhysicsLevel {
 	NONE,

@@ -35,6 +35,20 @@ export function setupGenerators(server: Server) {
 	});
 
 	server.addGenerator({
+		name: 'slope',
+		software: 'Cobblestone',
+		minimalSize: [64, 64, 64],
+		generate: workerGenerator('./worldgen/slope.ts'),
+	});
+
+	server.addGenerator({
+		name: 'mountains',
+		software: 'Cobblestone',
+		minimalSize: [64, 128, 64],
+		generate: workerGenerator('./worldgen/mountains.ts'),
+	});
+
+	server.addGenerator({
 		name: 'flat',
 		software: 'Cobblestone',
 		minimalSize: [1, 8, 1],

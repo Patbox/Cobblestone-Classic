@@ -16,6 +16,42 @@ export function setupCommands(server: Server, infos: Map<string, CommandInfo>) {
 	);
 
 	server.addCommand(
+		literal('tp')
+			.requires((x) => x.checkPermission('commands.tp').get(false))
+			.then(
+				argument('pos', new XYZFloatArgumentType())
+					.requires((x) => x.checkPermission('commands.tp.pos').get(false))
+
+					.executes((ctx, src) => {
+						const pos = ctx.getTyped<XYZ>('pos');
+						src.player().teleport(src.player().world, pos[0], pos[1], pos[2]);
+						src.send(`&aTeleported at ${pos[0]} ${pos[1]} ${pos[2]}`);
+					})
+			)
+			.then(
+				argument('player', KeyedArgumentType.onlinePlayer(server))
+					.requires((x) => x.checkPermission('commands.tp.player').get(false))
+					.executes((ctx, src) => {
+						const target = ctx.getTyped<Player>('player');
+						src.player().teleport(src.player().world, target.position[0], target.position[1], target.position[2]);
+						src.send(`&aTeleported to ${target.getDisplayName()}`);
+					})
+			),
+		'Teleports player',
+		[
+			{
+				title: '/tp command',
+				number: 0,
+				lines: [
+					'Teleports player to location or other player',
+					'&6/tp [<x>] [<y>] [<z>] &7- Teleports to location in world',
+					'&6/tp [<player>] &7- Teleports to player',
+				],
+			},
+		]
+	);
+
+	server.addCommand(
 		literal('help')
 			.requires((ctx) => ctx.checkPermission('commands.help').get(true))
 			.executes((_ctx, src) => src.server.executeCommand('help 1', src))
@@ -57,7 +93,8 @@ export function setupCommands(server: Server, infos: Map<string, CommandInfo>) {
 					lines.forEach(src.send);
 					src.send(`&8[&aPage &b${page + 1}&a out of &b${size}&a pages&8]`);
 				})
-			).then(
+			)
+			.then(
 				argument('command', new KeyedArgumentType<CommandInfo>('command', (x) => infos.get(x) ?? null))
 					.executes((ctx, src) => src.server.executeCommand(ctx.getInput() + ' 1', src))
 					.then(
@@ -451,15 +488,7 @@ export function setupCommands(server: Server, infos: Map<string, CommandInfo>) {
 
 											const [minX, minY, minZ] = generator.minimalSize;
 
-											if (
-												sizeX < minX ||
-												sizeY < minY ||
-												sizeZ < minZ ||
-												sizeX > 1024 ||
-												sizeY > 1024 ||
-												sizeZ > 1024
-											) {
-	
+											if (sizeX < minX || sizeY < minY || sizeZ < minZ || sizeX > 1024 || sizeY > 1024 || sizeZ > 1024) {
 												src.sendError(`Invalid world size!`);
 												src.sendError(`Minimal suppored: &6${minX} ${minY} ${minZ}`);
 												src.sendError(`Maximal: &61024 1024 1024`);
@@ -470,7 +499,18 @@ export function setupCommands(server: Server, infos: Map<string, CommandInfo>) {
 											src.send('&eWorld creation started! It can take a while...');
 
 											(async () => {
-												const world = await server.createWorld(name, [sizeX, sizeY, sizeZ], generator, seed, src.playerOrNull() ?? undefined);
+												let lastText = '';
+												let lastPercent = -9999;
+												const world = await server.createWorld(name, [sizeX, sizeY, sizeZ], generator, seed, src.playerOrNull(), (text, percent) => {
+													if (lastText != text || Math.abs(lastPercent - percent) >= 20) {
+														lastPercent = percent;
+														lastText = text;
+														src.send(`&8[&eGenerating ${name}&8]:&7 ${text} &8(${percent.toFixed()}%)`);
+													}
+												});
+												
+												
+												
 												if (!world) {
 													src.sendError("Couldn't create this world!");
 													return;

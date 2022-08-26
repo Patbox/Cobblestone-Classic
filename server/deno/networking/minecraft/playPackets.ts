@@ -349,7 +349,8 @@ export class ModernConnectionHandler implements ConnectionHandler {
 				chunksSend++;
 				this._handler.send(packet.setSubTitleText({text: `Loading terrain: ${Math.floor(chunksSend / chunksAll * 100) }%`}))
 
-				await sleep(10);
+
+				await sleep(1);
 			}
 		}
 

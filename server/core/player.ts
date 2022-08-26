@@ -339,6 +339,9 @@ export class Player {
 	 * Do not use unless you know what are you doing
 	 */
 	_action_block_place(x: number, y: number, z: number, blockId: number) {
+		if (!this.isInWorld) {
+			return;
+		}
 		let block = this._server.getBlock(blockId);
 
 		if (!block || !this.world.isInBounds(x, y, z) || vec.dist([x, y, z], this.position) > 6 || !block.placeable) {
@@ -377,6 +380,9 @@ export class Player {
 	 * Do not use unless you know what are you doing
 	 */
 	_action_block_break(x: number, y: number, z: number): boolean {
+		if (!this.isInWorld) {
+			return false;
+		}
 		const block = this.world.getBlock(x, y, z);
 
 		if (!block || !this.world.isInBounds(x, y, z) || block.unbreakable) {
@@ -409,7 +415,6 @@ export class Player {
 	 * Do not use unless you know what are you doing
 	 */
 	_action_chat_message(message: string) {
-
 		if (Date.now() - this.checksCache.lastChatTime < 1000 && this.checksCache.chatMessagesNumber > 5) {
 			this.disconnect(this._server.config.messages.cheatSpam);
 			return;
@@ -422,9 +427,6 @@ export class Player {
 
 		if (message.startsWith('/')) {
 			this.executeCommand(message.slice(1));
-			/*if (!result) {
-				this.sendMessage(this._server.getMessage('noCommand', {}));
-			}*/
 		} else {
 			const result = this._server.event.PlayerMessage._emit({ player: this, message: message.replaceAll('&', '%') });
 
@@ -453,6 +455,9 @@ export class Player {
 	 * Use `Player.checkColision` instead
 	 */
 	_checkColision(player: Player): boolean {
+		if (!this.isInWorld) {
+			return false;
+		}
 		const selfMax = vec.add(this.position, [0.3, 1.8, 0.3]);
 		const selfMin = vec.add(this.position, [-0.3, 0, -0.3]);
 
