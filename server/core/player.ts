@@ -1,6 +1,6 @@
 import { ConnectionHandler } from './networking/connection.ts';
 import { Server } from './server.ts';
-import { Holder, Nullable, Position, Services, XYZ, TriState } from './types.ts';
+import { Holder, Nullable, Position, Services, XYZ, TriState, BlockPos } from './types.ts';
 import { World } from './world/world.ts';
 import * as vec from '../libs/vec.ts';
 import * as event from './events.ts';
@@ -33,6 +33,7 @@ export class Player {
 
 	readonly _server: Server;
 	readonly _connectionHandler: ConnectionHandler;
+	private readonly tempData: Holder<unknown> = {};
 
 	constructor(uuid: string, username: string, client: string, service: Services, connection: ConnectionHandler, server: Server) {
 		this.ip = connection.getIp();
@@ -297,6 +298,10 @@ export class Player {
 		return { x: this.position[0], y: this.position[1], z: this.position[2], yaw: this.yaw, pitch: this.pitch };
 	}
 
+	getBlockPos(): BlockPos {
+		return { x: this.position[0] | 0, y: this.position[1] | 0, z: this.position[2] | 0 };
+	}
+
 	/**
 	 * Do not use unless you know what are you doing
 	 */
@@ -486,6 +491,15 @@ export class Player {
 		if (boxEnd[2] < selfMin[2]) return false;
 
 		return true;
+	}
+
+	getTemp<T>(key: string) {
+		return <Nullable<T>> (this.tempData[key] ?? null)
+	}
+
+	// deno-lint-ignore no-explicit-any
+	setTemp(key: string, data: any) {
+		this.tempData[key] = data
 	}
 }
 

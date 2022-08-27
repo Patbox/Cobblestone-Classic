@@ -33,6 +33,12 @@ export interface Position {
 	pitch: number;
 }
 
+export interface BlockPos {
+	x: number;
+	y: number;
+	z: number;
+}
+
 export type Nullable<T> = null | T;
 
 export type Services = 'Unknown' | 'Minecraft' | 'ClassiCube';

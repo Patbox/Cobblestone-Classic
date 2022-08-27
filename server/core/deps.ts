@@ -1,4 +1,5 @@
-export { gzip, ungzip } from 'https://cdn.skypack.dev/pako';
+export * as Denoflate from "https://deno.land/x/denoflate@1.2.1/mod.ts";
+
 export * as OpenSimplex from 'https://deno.land/x/open_simplex_noise@v2.5.0/mod.ts';
 export * as FractalNoise from 'https://deno.land/x/fractal_noise@v1.2.0/mod.ts';
 

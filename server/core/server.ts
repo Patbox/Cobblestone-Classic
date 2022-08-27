@@ -272,7 +272,7 @@ export class Server {
 	/**
 	 * Stops server
 	 */
-	stopServer() {
+	async stopServer() {
 		this.isShuttingDown = true;
 		try {
 			clearInterval(this._worldTickInterval);
@@ -295,18 +295,18 @@ export class Server {
 		}
 
 		try {
-			Object.values(this.players).forEach((player) => {
+			for (const player of this.players.values()) {
 				player.disconnect('Server closed');
-			});
+			}
 			this.logger.debug(`Players kicked`);
 		} catch {
 			this.logger.critical(`Error occured while saving players! Data might get corrupted!`);
 		}
 
 		try {
-			Object.values(this.worlds).forEach((world) => {
-				this.saveWorld(world);
-			});
+			for (const world of this.worlds.values()) {
+				await this.saveWorld(world);
+			}
 
 			this.logger.debug(`Worlds saved`);
 		} catch {
@@ -444,8 +444,8 @@ export class Server {
 	 * @param world World instance
 	 * @returns If saving was successful
 	 */
-	saveWorld(world: World): boolean {
-		return this.files.saveWorld(world.fileName, world);
+	async saveWorld(world: World) {
+		return await this.files.saveWorld(world.fileName, world);
 	}
 
 	/**
@@ -496,13 +496,12 @@ export class Server {
 			if (world == undefined || defaultWorld == null) throw "World doesn't exist!?";
 
 			world.teleportAllPlayers(defaultWorld);
-			const x = this.saveWorld(world);
-			if (x) {
-				this.worlds.delete(name);
-				this.event.WorldUnloaded._emit(world);
-			}
+			this.saveWorld(world);
+			this.worlds.delete(name);
+			this.event.WorldUnloaded._emit(world);
 			
-			return x;
+			
+			return true;
 		} else {
 			const world = this.worlds.get(name);
 			if (world != null) {
@@ -925,7 +924,7 @@ export interface IFileHelper {
 	getConfig(namespace: string): Nullable<unknown>;
 	existConfig(namespace: string): boolean;
 
-	saveWorld(name: string, world: World): boolean;
+	saveWorld(name: string, world: World): Promise<boolean>;
 	deleteWorld(name: string): boolean;
 	getWorld(namespace: string): Nullable<WorldData>;
 	existWorld(name: string): boolean;

@@ -1,12 +1,12 @@
 import { World } from '../../world/world.ts';
 import { ClientPacketHandler } from './clientPackets.ts';
 import { ServerPacketHandler } from './serverPackets.ts';
-import { gzip } from '../../deps.ts';
 import { AuthData, Nullable, XYZ } from '../../types.ts';
 import { Player } from '../../player.ts';
 import { Server } from '../../server.ts';
 import { protocol6BlockMap } from './blockMaps.ts';
 import { ConnectionHandler } from '../connection.ts';
+import { Denoflate } from "../../deps.ts";
 
 export const serverPackets = new ServerPacketHandler();
 
@@ -157,7 +157,7 @@ export class ClassicConnectionHandler implements ConnectionHandler {
 				blockData.set(world.blockData, 4);
 			}
 
-			const compressedMap = gzip(blockData);
+			const compressedMap = Denoflate.gzip(blockData, 6);
 
 			if (compressedMap == undefined) {
 				return;

@@ -3,7 +3,7 @@ import { Player, PlayerData } from '../core/player.ts';
 import { IFileHelper, ILogger, Server } from '../core/server.ts';
 import { World } from '../core/world/world.ts';
 import { fs, crypto2 } from './deps.ts';
-import { gzip, ungzip, Msgpack, Semver } from '../core/deps.ts';
+import { Msgpack, Semver, Denoflate } from '../core/deps.ts';
 import { AuthData, AuthProvider, Nullable, Services } from '../core/types.ts';
 
 const textEncoder = new TextEncoder();
@@ -128,8 +128,8 @@ export class DenoServer extends Server {
 		setInterval(heartBeat, 1000 * 60);
 	}
 
-	stopServer() {
-		super.stopServer();
+	async stopServer() {
+		await super.stopServer();
 
 		this.stopDeno();
 	}
@@ -397,14 +397,14 @@ const fileHelper: IFileHelper = {
 		}
 	},
 
-	saveWorld(name: string, world: World) {
+	async saveWorld(name: string, world: World) {
 		try {
-			const file = Deno.createSync(`./world/${name}.cw`);
+			const file = await Deno.create(`./world/${name}.cw`);
 
-			const compressed = gzip(world.serialize());
+			const compressed = Denoflate.gzip(world.serialize(), 8);
 
 			if (compressed != undefined) {
-				file.writeSync(compressed);
+				await file.write(compressed);
 
 				file.close();
 				return true;
@@ -436,7 +436,7 @@ const fileHelper: IFileHelper = {
 
 			const file = Deno.readFileSync(`./world/${name}.cw`);
 
-			const uncompressed = ungzip(file);
+			const uncompressed = Denoflate.gunzip(file);
 
 			if (uncompressed != null && uncompressed instanceof Uint8Array) {
 				return World.deserialize(uncompressed);
