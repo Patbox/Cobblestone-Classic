@@ -49,7 +49,7 @@ export class ClassicConnectionHandler implements ConnectionHandler {
 				}
 
 				this.sendServerInfo(server);
-
+				
 				const result = await server.authenticatePlayer({
 					uuid: this._overrides?.uuid ?? playerInfo.username.toLowerCase(),
 					username: this._overrides?.username ?? playerInfo.username,

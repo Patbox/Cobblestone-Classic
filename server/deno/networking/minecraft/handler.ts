@@ -20,7 +20,7 @@ export type PacketHandler = (handler: MCProtocolHandler, data: PacketReader) => 
 
 export class MCProtocolHandler {
 	readonly selfUuid = "00000001-0000-0000-0000-000000000000";
-	private _send: (d: Uint8Array) => void;
+	private _send: (d: Uint8Array) => Promise<void>;
 
 	stage: NetworkingStage = NetworkingStage.STATUS;
 	packets: PacketHandler[];
@@ -39,7 +39,7 @@ export class MCProtocolHandler {
 	inventory: number[] = Array(50);
 	inventorySlot = 0;
 
-	constructor(server: Server, protocol: number, _serverHostname: string, _serverPort: number, nextStatus: number, send: (d: Uint8Array) => void, connect: (handler: ConnectionHandler, auth: AuthData) => void, close: (reason?: string|Error) => void) {
+	constructor(server: Server, protocol: number, _serverHostname: string, _serverPort: number, nextStatus: number, send: (d: Uint8Array) => Promise<void>, connect: (handler: ConnectionHandler, auth: AuthData) => void, close: (reason?: string|Error) => void) {
 		this._send = send;
 		this.stage = nextStatus == 1 ? NetworkingStage.STATUS : NetworkingStage.LOGIN;
 		this.packets = this.stage == NetworkingStage.STATUS ? statusPackets : loginPackets;
@@ -50,7 +50,7 @@ export class MCProtocolHandler {
 	}
 
 	send(packet: PacketWriter) {
-		this._send(packet.toPacket(packet.pos >= this.compression))
+		return this._send(packet.toPacket(packet.pos >= this.compression))
 	}
 
 
@@ -108,7 +108,7 @@ statusPackets[0x00] = (handler, _data) => {
 				description: {
 					text: `${handler._server.config.serverName.replaceAll('&', '§')}\n${handler._server.config.serverMotd.replaceAll('&', '§')}`,
 				},
-				favicon: (<DenoServer>handler._server)._serverIcon,
+				favicon: (<DenoServer>handler._server)._serverIcon ? 'data:image/png;base64,' + (<DenoServer>handler._server)._serverIcon : undefined,
 			})
 		)
 	);

@@ -1,3 +1,4 @@
+import { Server } from "./core/server.ts";
 import { fs } from './deno/deps.ts';
 import { DenoServer, logger } from './deno/server.ts';
 
@@ -33,7 +34,7 @@ args.forEach((x) => {
 			started = true;
 			break;
 		default:
-			console.log(`${DenoServer.softwareName} > Unknown argument ${x}`);
+			console.log(`${Server.softwareName} > Unknown argument ${x}`);
 	}
 });
 
@@ -56,7 +57,7 @@ export const server = srv;
 
 function displayHelp() {
 	console.log(
-		`${DenoServer.softwareName} version ${DenoServer.softwareVersion} - Help\n`,
+		`${Server.softwareName} version ${Server.softwareVersion} - Help\n`,
 		`Available commands:\n`,
 		` ${start} help - displays this help page\n`,
 		` ${start} no-plugins - starts server without loading plugins\n`,
@@ -71,10 +72,10 @@ function update() {}
 
 function version() {
 	console.log(
-		`\nServer software name: ${DenoServer.softwareName}\n` +
-			`Server version: ${DenoServer.softwareVersion}\n` +
-			`Target game: ${DenoServer.targetGame}\n` +
-			`Target version: ${DenoServer.targetVersion}\n` +
+		`\nServer software name: ${Server.softwareName}\n` +
+			`Server version: ${Server.softwareVersion}\n` +
+			`Target game: ${Server.targetGame}\n` +
+			`Target version: ${Server.targetVersion}\n` +
 			`Deno: ${Deno.version.deno} (v8: ${Deno.version.v8}, Typescript: ${Deno.version.typescript})\n`
 	);
 }

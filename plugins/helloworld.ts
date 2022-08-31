@@ -5,7 +5,7 @@ export const cobblestoneApi = '0.0.20';
 
 import { Server, WorldView, Commands } from '../server/core.ts';
 
-const { literal, argument } = Commands;
+const { literal } = Commands;
 
 export const init = (server: Server) => {
 	server.logger.log('&eHello world!');

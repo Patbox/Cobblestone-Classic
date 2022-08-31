@@ -410,6 +410,10 @@ export class PacketWriter {
 			return out;
 		}
 	}
+
+	toBuffer(): Uint8Array {
+		return this.buffer.slice(0, this.pos);
+	}
 }
 
 export class BitSet {

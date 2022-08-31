@@ -3,7 +3,7 @@ import { Player, PlayerData } from '../core/player.ts';
 import { IFileHelper, ILogger, Server } from '../core/server.ts';
 import { World } from '../core/world/world.ts';
 import { fs, crypto2 } from './deps.ts';
-import { Msgpack, Semver, Denoflate } from '../core/deps.ts';
+import { Msgpack, Semver, Denoflate, Hex } from '../core/deps.ts';
 import { AuthData, AuthProvider, Nullable, Services } from '../core/types.ts';
 
 const textEncoder = new TextEncoder();
@@ -13,6 +13,8 @@ export const defaultFolders = ['world', 'player', 'config', 'logs', 'plugins'];
 export class DenoServer extends Server {
 	protected _salt = <Record<AuthProvider, string>>{};
 	_serverIcon: string | undefined;
+	_classiCubeWebAddress: Nullable<string> = null;
+
 	protected _shouldLoadPlugins: boolean;
 
 	static readonly denoVersion = '1.25.x';
@@ -22,8 +24,8 @@ export class DenoServer extends Server {
 	constructor(loadPlugins = true, devMode = false) {
 		super(fileHelper, logger, devMode);
 		this._shouldLoadPlugins = loadPlugins;
-		this._salt["Betacraft"] = crypto.randomUUID().replaceAll("-", "");
-		this._salt["ClassiCube"] = crypto.randomUUID().replaceAll("-", "");
+		this._salt['Betacraft'] = crypto.randomUUID().replaceAll('-', '');
+		this._salt['ClassiCube'] = crypto.randomUUID().replaceAll('-', '');
 	}
 
 	async _startServer() {
@@ -48,7 +50,7 @@ export class DenoServer extends Server {
 				this._serverIcon = btoa(String.fromCharCode.apply(null, [...file]));
 			}
 		} catch (_e) {
-			this.logger.warn('Server icon (server-icon.png) is invalid or doesn\'t exist!');
+			this.logger.warn("Server icon (server-icon.png) is invalid or doesn't exist!");
 		}
 
 		const listener = Deno.listen({ port: this.config.port });
@@ -58,8 +60,7 @@ export class DenoServer extends Server {
 				if (this.isShuttingDown) {
 					return;
 				}
-				
-				//Deno.serveHttp(conn)
+
 				new TpcConnectionHandler(conn, this);
 			}
 		})();
@@ -91,7 +92,7 @@ export class DenoServer extends Server {
 				const command = String.fromCharCode(...buf.slice(0, n)).replace('\n', '');
 				buf.fill(0);
 				logger.writeToLog('> ' + command);
-				this.executeConsoleCommand(command)
+				this.executeConsoleCommand(command);
 			}
 		})();
 
@@ -102,9 +103,9 @@ export class DenoServer extends Server {
 			try {
 				if (this.config.useBetaCraftHeartbeat) {
 					fetch(
-						`https://betacraft.uk/heartbeat.jsp?port=${this.config.port}&max=${this.config.maxPlayerCount}&name=${escape(
+						`https://betacraft.uk/heartbeat.jsp?port=${this.config.port}&max=${this.config.maxPlayerCount}&name=${encodeURIComponent(
 							this.config.serverName
-						)}&public=${this.config.publicOnBetaCraft ? 'True' : 'False'}&version=7&salt=${this._salt["Betacraft"]}&users=${players.length}`
+						)}&public=${this.config.publicOnBetaCraft ? 'True' : 'False'}&version=7&salt=${this._salt['Betacraft']}&users=${players.length}`
 					);
 				}
 			} catch (_e) {
@@ -114,10 +115,22 @@ export class DenoServer extends Server {
 			try {
 				if (this.config.useClassiCubeHeartbeat) {
 					fetch(
-						`http://www.classicube.net/api/server/heartbeat/?port=${this.config.port}&max=${this.config.maxPlayerCount}&name=${escape(
-							this.config.serverName
-						)}&public=${this.config.publicOnClassiCube ? 'True' : 'False'}&version=7&salt=${this._salt["ClassiCube"]}&users=${players.length}`
-					);
+						`http://www.classicube.net/server/heartbeat/?` +
+							`&port=${this.config.port}` +
+							`&max=${this.config.maxPlayerCount}` +
+							`&name=${encodeURIComponent(this.config.serverName)}` +
+							`&public=${this.config.publicOnClassiCube}` +
+							`&version=7` +
+							`&salt=${this._salt['ClassiCube']}` +
+							`&users=${this.players.size}` +
+							`&software=${encodeURIComponent(Server.softwareName)}` +
+							`&web=true`
+					).then(async (data) => {
+						const out = await data.text();
+						if (out.startsWith('http')) {
+							this._classiCubeWebAddress = out;
+						}
+					});
 				}
 			} catch (_e) {
 				this.logger.warn(`Couldn't send heartbeat to ClassiCube!`);
@@ -150,15 +163,15 @@ export class DenoServer extends Server {
 			let authProvider: AuthProvider = 'None';
 
 			const classicCheck = async (provider: AuthProvider) => {
-				return decoder.decode(await crypto2.subtle.digest("MD5", encoder.encode(this._salt[provider] + data.username))) == data.secret;
-			}
+				return decoder.decode(Hex.encode(new Uint8Array(await crypto2.subtle.digest('MD5', encoder.encode(this._salt[provider] + data.username))))) == data.secret;
+			};
 
-			if (await classicCheck("Betacraft")) {
-				service = "Minecraft";
-				authProvider = "Betacraft";
-			} else if (await classicCheck("ClassiCube")) {
-				service = "ClassiCube";
-				authProvider = "ClassiCube";
+			if (await classicCheck('Betacraft')) {
+				service = 'Minecraft';
+				authProvider = 'Betacraft';
+			} else if (await classicCheck('ClassiCube')) {
+				service = 'ClassiCube';
+				authProvider = 'ClassiCube';
 			}
 
 			if (service == 'Minecraft') {
@@ -202,7 +215,7 @@ export class DenoServer extends Server {
 					secret: null,
 					service: 'Unknown',
 					authenticated: true,
-					authProvider: "None",
+					authProvider: 'None',
 				},
 				allow: true,
 			};

@@ -292,7 +292,7 @@ export class ModernConnectionHandler implements ConnectionHandler {
 
 
 		let chunksSend = 0;
-		const chunksAll = Math.floor(worldSize[0] / 16 + 2) * Math.floor(worldSize[2] / 16 + 2)
+		const chunksAll = Math.floor(worldSize[0] / 16 + 3) * Math.floor(worldSize[2] / 16 + 3)
 		this._handler.send(packet.setSubTitleText({text: 'Loading terrain: 0%'}))
 
 		for (let cx = -1; cx < worldSize[0] / 16 + 1; cx++) {
@@ -344,12 +344,10 @@ export class ModernConnectionHandler implements ConnectionHandler {
 					packet.writeVarInt(0);
 					packet.writeVarInt(0);
 
-					this._handler.send(packet);
+					await this._handler.send(packet);
 				}
 				chunksSend++;
 				this._handler.send(packet.setSubTitleText({text: `Loading terrain: ${Math.floor(chunksSend / chunksAll * 100) }%`}))
-
-
 				await sleep(1);
 			}
 		}
