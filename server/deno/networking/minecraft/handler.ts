@@ -34,7 +34,8 @@ export class MCProtocolHandler {
 	player: Nullable<Player> = null;
 	data = {
 		minePos: null as Nullable<XYZ>,
-		mineTime: null as Nullable<number>
+		mineTime: null as Nullable<number>,
+		lastSequence: -1
 	}
 	inventory: number[] = Array(50);
 	inventorySlot = 0;

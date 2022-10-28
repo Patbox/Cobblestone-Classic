@@ -50,6 +50,8 @@ playPackets[0x05] = (handler, data) => {
 playPackets[0x1d] = (handler, data) => {
 	const status = data.readVarInt();
 	const pos = data.readPosition();
+	data.readByte(); // face
+	handler.data.lastSequence = data.readVarInt();
 
 	switch (status) {
 		case 0: {
@@ -143,7 +145,7 @@ playPackets[0x31] = (handler, data) => {
 	const _cursorY = data.readFloat();
 	const _cursorZ = data.readFloat();
 	const inside = data.readBool();
-	const sequence = data.readVarInt();
+	handler.data.lastSequence = data.readVarInt();
 
 	if (item != 0 && !inside) {
 		const face = directions[faceId];
@@ -161,8 +163,6 @@ playPackets[0x31] = (handler, data) => {
 			);
 		}
 	}
-
-	handler.send(packet.acknowledgeBlockChange(sequence));
 };
 
 export class ModernConnectionHandler implements ConnectionHandler {
@@ -198,6 +198,11 @@ export class ModernConnectionHandler implements ConnectionHandler {
 
 			this._handler.data.minePos = null;
 			this._handler.data.mineTime = null;
+		}
+
+		if (this._handler.data.lastSequence != -1) {
+			this._handler.send(packet.acknowledgeBlockChange(this._handler.data.lastSequence));
+			this._handler.data.lastSequence = -1;
 		}
 	}
 
@@ -361,6 +366,7 @@ export class ModernConnectionHandler implements ConnectionHandler {
 		this._handler.send(packet.playerListAdd(this._player, this._handler.selfUuid));
 
 		this._handler.send(packet.abilities(true, false, false, true, 0.05, 0.1));
+		this._handler.send(packet.worldTime(0n, -6000n));
 		this._handler.send(packet.setSubTitleText({text: ''}))
 		this._handler.send(packet.setTitleText({text: ''}))
 		this._handler.send(packet.setTitleAnimation(0, 0, 0))
@@ -501,6 +507,7 @@ export const packet = {
 	playerListRemove: (player: number) => new PacketWriter().writeVarInt(0x37).writeVarInt(0x4).writeVarInt(0x1).writeUUID(entityIdToUuid(player)),
 
 	entityStatus: (id: number, status: number) => new PacketWriter().writeVarInt(0x1a).writeInt(id).writeByte(status),
+	worldTime: (worldAge: bigint, time: bigint) => new PacketWriter().writeVarInt(0x5C).writeLong(worldAge).writeLong(time),
 	disconnect: (text: Holder<unknown>) => new PacketWriter().writeVarInt(0x19).writeString(JSON.stringify(text)),
 	heldItemSlot: (slot: number) => new PacketWriter().writeVarInt(0x4a).writeByte(slot),
 	setSlot: (window: number, stateId: number, slot: number, itemStack: ItemStackData) => {

@@ -17,9 +17,9 @@ export class DenoServer extends Server {
 
 	protected _shouldLoadPlugins: boolean;
 
-	static readonly denoVersion = '1.25.x';
-	static readonly denoVersionMin = '1.25.0';
-	static readonly denoVersionMax = '1.26.0';
+	static readonly denoVersion = '1.27.x';
+	static readonly denoVersionMin = '1.27.0';
+	static readonly denoVersionMax = '1.28.0';
 
 	constructor(loadPlugins = true, devMode = false) {
 		super(fileHelper, logger, devMode);
@@ -29,9 +29,16 @@ export class DenoServer extends Server {
 	}
 
 	async _startServer() {
-		if (!Semver.satisfies(Deno.version.deno, '>=' + DenoServer.denoVersionMin + ' <' + DenoServer.denoVersionMax)) {
+		if (!Semver.satisfies(Deno.version.deno, '>=' + DenoServer.denoVersionMin)) {
 			this.logger.warn(
-				`Your Deno version is unsupported! This software was developed agains ${DenoServer.denoVersion}, while you are using ${Deno.version.deno}!`
+				`Your Deno version is outdated! This software was developed agains ${DenoServer.denoVersion}, while you are using ${Deno.version.deno}!`
+			);
+			this.logger.warn(
+				`Because of missing/changed apis, it might not work correctly!`
+			);
+		} else if (!Semver.satisfies(Deno.version.deno, ' <' + DenoServer.denoVersionMax)) {
+			this.logger.warn(
+				`Your Deno version is untested! This software was developed agains ${DenoServer.denoVersion}, while you are using ${Deno.version.deno}!`
 			);
 		}
 
@@ -226,7 +233,7 @@ export class DenoServer extends Server {
 	protected async _startLoadingPlugins() {
 		if (this._loaded || !this._shouldLoadPlugins) return;
 		for (const dirEntry of Deno.readDirSync('./plugins/')) {
-			if (dirEntry.isFile && (dirEntry.name.endsWith('.ts') || dirEntry.name.endsWith('.ts'))) {
+			if (dirEntry.isFile && (dirEntry.name.endsWith('.ts') || dirEntry.name.endsWith('.js'))) {
 				const plugin = await import(Deno.cwd() + `/plugins/${dirEntry.name}`);
 				this.addPlugin(plugin, dirEntry.name);
 			}
